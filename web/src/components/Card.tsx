@@ -19,7 +19,7 @@ export function CardBody({
 }) {
   const e = file.entity;
   if (e.type !== "task" && e.type !== "learning-step" && e.type !== "routine") return null;
-  const hasSuggestion = e.pepper_suggests !== undefined;
+  const hasSuggestion = e.agent_suggests !== undefined;
 
   const style: CSSProperties = {
     ...styles.card,
@@ -41,8 +41,8 @@ export function CardBody({
       </div>
       {hasSuggestion && (
         <div style={styles.suggestion}>
-          Pepper suggests: <code>{JSON.stringify(e.pepper_suggests!.patch)}</code> —{" "}
-          {e.pepper_suggests!.reason}
+          Agent suggests: <code>{JSON.stringify(e.agent_suggests!.patch)}</code> —{" "}
+          {e.agent_suggests!.reason}
         </div>
       )}
     </article>

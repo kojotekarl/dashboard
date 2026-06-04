@@ -18,7 +18,7 @@ let repo: MarkdownRepository;
 const NOW = new Date("2026-06-04T10:00:00Z");
 
 beforeEach(async () => {
-  vault = await mkdtemp(join(tmpdir(), "pepper-t7-"));
+  vault = await mkdtemp(join(tmpdir(), "agent-t7-"));
   await mkdir(join(vault, "tasks"));
   await mkdir(join(vault, "goals"));
   await mkdir(join(vault, "routines"));
@@ -45,24 +45,24 @@ function scriptedAgent(make: (input: GroomInput) => Suggestion[]): AgentProvider
 }
 
 describe("handleGroom", () => {
-  test("writes pepper_suggests to each target file", async () => {
+  test("writes agent_suggests to each target file", async () => {
     await seed("goals/ship.md", { id: "g-ship", title: "Ship", type: "goal", status: "active", priority: "P1" });
     await seed("tasks/a.md", { id: "t-a", title: "A", type: "task", status: "backlog", priority: "P1", goal: "g-ship", order: "b" });
 
     const res = await handleGroom(repo, new MockAgent());
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { suggestions: { taskId: string; file: { entity: { pepper_suggests?: unknown } } }[]; provider: string };
+    const body = (await res.json()) as { suggestions: { taskId: string; file: { entity: { agent_suggests?: unknown } } }[]; provider: string };
     expect(body.provider).toBe("mock");
     expect(body.suggestions.length).toBeGreaterThan(0);
 
-    // The file on disk now carries pepper_suggests as YAML.
+    // The file on disk now carries agent_suggests as YAML.
     const raw = await readFile(join(vault, "tasks/a.md"), "utf8");
-    expect(raw).toContain("pepper_suggests:");
+    expect(raw).toContain("agent_suggests:");
     expect(raw).toMatch(/base_version:/);
     expect(raw).toMatch(/provider: mock/);
   });
 
-  test("contentHash is unchanged by writing pepper_suggests (excluded from the hash)", async () => {
+  test("contentHash is unchanged by writing agent_suggests (excluded from the hash)", async () => {
     await seed("tasks/a.md", { id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", order: "b" });
     const before = (await repo.get("t-a"))!.contentHash;
 
@@ -80,7 +80,7 @@ describe("handleGroom", () => {
     expect(after).toBe(before);
   });
 
-  test("re-grooming overwrites the existing pepper_suggests", async () => {
+  test("re-grooming overwrites the existing agent_suggests", async () => {
     await seed("tasks/a.md", { id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", order: "b" });
 
     const a1 = scriptedAgent((input) => [{
@@ -98,8 +98,8 @@ describe("handleGroom", () => {
     await handleGroom(repo, a2);
 
     const file = (await repo.get("t-a"))!;
-    expect(file.entity.pepper_suggests?.reason).toBe("second");
-    expect(file.entity.pepper_suggests?.patch).toEqual({ status: "in-progress" });
+    expect(file.entity.agent_suggests?.reason).toBe("second");
+    expect(file.entity.agent_suggests?.patch).toEqual({ status: "in-progress" });
   });
 
   test("a suggestion for a missing taskId is dropped without failing the whole groom", async () => {
@@ -118,7 +118,7 @@ describe("handleGroom", () => {
 });
 
 describe("handleApprove", () => {
-  test("applies the patch and clears pepper_suggests in one write", async () => {
+  test("applies the patch and clears agent_suggests in one write", async () => {
     await seed("tasks/a.md", { id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", order: "b" });
     const agent = scriptedAgent((input) => [{
       taskId: "t-a", patch: { status: "today" }, reason: "test",
@@ -129,12 +129,12 @@ describe("handleApprove", () => {
 
     const res = await handleApprove(repo, "t-a");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { entity: { status: string; pepper_suggests?: unknown } };
+    const body = (await res.json()) as { entity: { status: string; agent_suggests?: unknown } };
     expect(body.entity.status).toBe("today");
-    expect(body.entity.pepper_suggests).toBeUndefined();
+    expect(body.entity.agent_suggests).toBeUndefined();
 
     const raw = await readFile(join(vault, "tasks/a.md"), "utf8");
-    expect(raw).not.toContain("pepper_suggests");
+    expect(raw).not.toContain("agent_suggests");
     expect(raw).toMatch(/^status: today$/m);
   });
 
@@ -171,12 +171,12 @@ describe("handleApprove", () => {
     const file = (await repo.get("t-a"))!;
     if (file.entity.type !== "task") throw new Error("type");
     expect(file.entity.status).toBe("backlog");
-    expect(file.entity.pepper_suggests).toBeDefined();
+    expect(file.entity.agent_suggests).toBeDefined();
   });
 });
 
 describe("handleDismiss", () => {
-  test("clears pepper_suggests without changing other fields", async () => {
+  test("clears agent_suggests without changing other fields", async () => {
     await seed("tasks/a.md", { id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", order: "b" });
     const agent = scriptedAgent((input) => [{
       taskId: "t-a", patch: { status: "today" }, reason: "test",
@@ -187,9 +187,9 @@ describe("handleDismiss", () => {
 
     const res = await handleDismiss(repo, "t-a");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { entity: { status: string; pepper_suggests?: unknown } };
+    const body = (await res.json()) as { entity: { status: string; agent_suggests?: unknown } };
     expect(body.entity.status).toBe("backlog"); // unchanged
-    expect(body.entity.pepper_suggests).toBeUndefined();
+    expect(body.entity.agent_suggests).toBeUndefined();
   });
 
   test("404 when no pending suggestion exists", async () => {
@@ -198,7 +198,7 @@ describe("handleDismiss", () => {
     expect(res.status).toBe(404);
   });
 
-  test("dismiss writes pepper_dismissed_at as an ISO timestamp", async () => {
+  test("dismiss writes agent_dismissed_at as an ISO timestamp", async () => {
     await seed("tasks/a.md", { id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", order: "b" });
     const agent = scriptedAgent((input) => [{
       taskId: "t-a", patch: { status: "today" }, reason: "test",
@@ -213,7 +213,7 @@ describe("handleDismiss", () => {
 
     const file = (await repo.get("t-a"))!;
     if (file.entity.type !== "task") throw new Error("type narrow");
-    const stamp = (file.entity as { pepper_dismissed_at?: string }).pepper_dismissed_at;
+    const stamp = (file.entity as { agent_dismissed_at?: string }).agent_dismissed_at;
     expect(typeof stamp).toBe("string");
     const parsed = Date.parse(stamp!);
     expect(Number.isFinite(parsed)).toBe(true);
@@ -268,7 +268,7 @@ describe("handleApproveAll", () => {
     const tb = (await repo.get("t-b"))!;
     if (tb.entity.type !== "task") throw new Error("type");
     expect(tb.entity.status).toBe("backlog");
-    expect(tb.entity.pepper_suggests).toBeDefined();
+    expect(tb.entity.agent_suggests).toBeDefined();
   });
 
   test("empty pending → ok: true with no applied", async () => {

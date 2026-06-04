@@ -203,12 +203,12 @@ function isVaultFile(name: string): boolean {
 }
 
 /**
- * SHA-256 hex of canonicalized frontmatter + body. Excludes `pepper_suggests`
+ * SHA-256 hex of canonicalized frontmatter + body. Excludes `agent_suggests`
  * so writing a suggestion to a file does NOT change the file's base version
  * (the version the suggestion was generated against).
  */
 export function contentHash(data: Record<string, unknown>, body: string): string {
-  const { pepper_suggests: _drop, ...rest } = data;
+  const { agent_suggests: _drop, ...rest } = data;
   const sortedKeys = Object.keys(rest).sort();
   const canonical: Record<string, unknown> = {};
   for (const k of sortedKeys) canonical[k] = rest[k];

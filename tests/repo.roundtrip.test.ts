@@ -7,7 +7,7 @@ import { MarkdownRepository } from "../server/repo/MarkdownRepository.ts";
 let vault: string;
 
 beforeEach(async () => {
-  vault = await mkdtemp(join(tmpdir(), "pepper-roundtrip-"));
+  vault = await mkdtemp(join(tmpdir(), "agent-roundtrip-"));
   await mkdir(join(vault, "tasks"));
 });
 
@@ -84,7 +84,7 @@ describe("roundtrip preservation", () => {
     expect(after).toContain(body);
   });
 
-  test("update can write pepper_suggests without disturbing other fields", async () => {
+  test("update can write agent_suggests without disturbing other fields", async () => {
     const path = join(vault, "tasks/foo.md");
     await writeFile(
       path,
@@ -115,14 +115,14 @@ describe("roundtrip preservation", () => {
       provider: "mock",
       created_at: "2026-06-04T10:00:00Z",
     };
-    const after = await repo.update("t-foo", { pepper_suggests: suggestion });
+    const after = await repo.update("t-foo", { agent_suggests: suggestion });
 
-    // Hash excludes pepper_suggests, so the BASE hash is unchanged
+    // Hash excludes agent_suggests, so the BASE hash is unchanged
     // even though the file on disk now has the suggestion in it.
     expect(after.contentHash).toBe(baseHash);
 
     const reread = await readFile(path, "utf8");
-    expect(reread).toContain("pepper_suggests:");
+    expect(reread).toContain("agent_suggests:");
     expect(reread).toContain("tags:");
     expect(reread).toContain("- keepme");
     expect(reread).toMatch(/^status: today$/m); // status NOT changed by writing a suggestion

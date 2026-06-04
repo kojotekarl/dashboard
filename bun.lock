@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "pepper-dashboard",
+      "name": "pa-dashboard",
       "dependencies": {
         "chokidar": "^5.0.0",
         "gray-matter": "^4.0.3",

@@ -28,9 +28,9 @@ export type ApiGroomResponse = {
  * POST /api/agent/groom
  *
  * Run the configured agent over the current vault, then write each
- * resulting Suggestion as `pepper_suggests:` on its target file.
+ * resulting Suggestion as `agent_suggests:` on its target file.
  *
- * pepper_suggests is excluded from contentHash by design, so writing it
+ * agent_suggests is excluded from contentHash by design, so writing it
  * does NOT bump the file's base version — which means rerunning groom
  * (or later approving) won't trip the staleness gate just because we
  * stamped the suggestion onto the file.
@@ -46,7 +46,7 @@ export async function handleGroom(
   for (const suggestion of result.suggestions) {
     try {
       const updated = await repo.update(suggestion.taskId, {
-        pepper_suggests: toEmbedded(suggestion),
+        agent_suggests: toEmbedded(suggestion),
       });
       out.push({ ...suggestion, file: serializeFile(updated) });
     } catch (err: unknown) {

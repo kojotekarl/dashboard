@@ -7,7 +7,7 @@ import { MarkdownRepository, contentHash } from "../server/repo/MarkdownReposito
 let vault: string;
 
 beforeEach(async () => {
-  vault = await mkdtemp(join(tmpdir(), "pepper-test-"));
+  vault = await mkdtemp(join(tmpdir(), "agent-test-"));
   await mkdir(join(vault, "tasks"));
   await mkdir(join(vault, "goals"));
   await mkdir(join(vault, "routines"));
@@ -144,11 +144,11 @@ describe("contentHash", () => {
     expect(h1).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  test("excludes pepper_suggests so writing a suggestion does NOT change base hash", () => {
+  test("excludes agent_suggests so writing a suggestion does NOT change base hash", () => {
     const data = { id: "t-1", title: "x", status: "today", priority: "P1", order: "b" };
     const withSuggestion = {
       ...data,
-      pepper_suggests: { patch: { status: "done" }, reason: "x", base_version: "abc", provider: "mock", created_at: "now" },
+      agent_suggests: { patch: { status: "done" }, reason: "x", base_version: "abc", provider: "mock", created_at: "now" },
     };
     expect(contentHash(data, "body")).toBe(contentHash(withSuggestion, "body"));
   });

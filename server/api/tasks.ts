@@ -17,9 +17,9 @@ export async function handleListTasks(repo: MarkdownRepository): Promise<Respons
 /**
  * Fields the public PATCH endpoint must never touch. These either rewrite
  * identity (`id`, `type`) or belong to the agent-driven /api/suggestions
- * lifecycle (`pepper_suggests`).
+ * lifecycle (`agent_suggests`).
  */
-const FORBIDDEN_PATCH_FIELDS = new Set(["id", "type", "pepper_suggests"]);
+const FORBIDDEN_PATCH_FIELDS = new Set(["id", "type", "agent_suggests"]);
 
 /** PATCH /api/tasks/:id with a JSON body of frontmatter fields to set. */
 export async function handlePatchTask(

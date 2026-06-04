@@ -44,7 +44,7 @@ export function BatchReviewModal(props: BatchReviewModalProps) {
     <div style={styles.backdrop} onClick={onClose}>
       <div style={styles.dialog} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <header style={styles.header}>
-          <h2 style={styles.title}>Pepper's suggestions</h2>
+          <h2 style={styles.title}>Agent's suggestions</h2>
           {provider !== null && (
             <span style={{ ...styles.providerBadge, ...(provider === "hermes" ? styles.providerHermes : styles.providerMock) }}>
               {provider === "hermes" ? "Live Hermes" : "Mock"}
@@ -55,7 +55,7 @@ export function BatchReviewModal(props: BatchReviewModalProps) {
         </header>
 
         {rows.length === 0 ? (
-          <p style={styles.empty}>Nothing pending. Click "Groom my day" to ask Pepper for fresh proposals.</p>
+          <p style={styles.empty}>Nothing pending. Click "Groom my day" to ask the agent for fresh proposals.</p>
         ) : (
           <ul style={styles.rows}>
             {rows.map((r) => {

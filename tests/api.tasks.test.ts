@@ -9,7 +9,7 @@ let vault: string;
 let repo: MarkdownRepository;
 
 beforeEach(async () => {
-  vault = await mkdtemp(join(tmpdir(), "pepper-api-"));
+  vault = await mkdtemp(join(tmpdir(), "agent-api-"));
   await mkdir(join(vault, "tasks"));
   await mkdir(join(vault, "goals"));
   repo = new MarkdownRepository(vault);
@@ -74,9 +74,9 @@ describe("handlePatchTask", () => {
     expect(res.status).toBe(400);
   });
 
-  test("400 on forbidden fields (id, type, pepper_suggests)", async () => {
+  test("400 on forbidden fields (id, type, agent_suggests)", async () => {
     await seed("tasks/x.md", { id: "t-x", title: "x", type: "task", status: "today", priority: "P1", order: "b" });
-    for (const field of ["id", "type", "pepper_suggests"]) {
+    for (const field of ["id", "type", "agent_suggests"]) {
       const res = await handlePatchTask(repo, "t-x", { [field]: "anything" });
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error: string };

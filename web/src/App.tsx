@@ -51,7 +51,7 @@ export function App() {
     const out: SuggestionRow[] = [];
     for (const f of state.files) {
       const e = f.entity;
-      const sugg = "pepper_suggests" in e ? e.pepper_suggests : undefined;
+      const sugg = "agent_suggests" in e ? e.agent_suggests : undefined;
       if (sugg === undefined) continue;
       out.push({
         taskId: f.id,
@@ -277,7 +277,7 @@ export function App() {
   return (
     <main style={styles.main}>
       <header style={styles.header}>
-        <h1 style={styles.h1}>Pepper Dashboard</h1>
+        <h1 style={styles.h1}>PA Dashboard</h1>
         <ConnectionBadge state={connection} />
         {pendingRows.length > 0 && !modalOpen && (
           <button
@@ -368,7 +368,7 @@ function ConnectionBadge({ state }: { state: ConnectionState }) {
 
 function GroomStatus({ state }: { state: GroomState }) {
   if (state.kind === "idle") return null;
-  if (state.kind === "running") return <p style={styles.groomMsg}>Pepper is thinking…</p>;
+  if (state.kind === "running") return <p style={styles.groomMsg}>Agent is thinking…</p>;
   if (state.kind === "error") {
     return <p style={{ ...styles.groomMsg, ...styles.groomErr }}>Groom failed: {state.message}</p>;
   }

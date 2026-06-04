@@ -7,6 +7,7 @@
 .claude/
 CLAUDE.md
 AGENTS.md
+SUBMISSION.md
 
 # Private vaults — only sample-vault/ is committed.
 # Point VAULT_PATH in .env at these for real/dev data.

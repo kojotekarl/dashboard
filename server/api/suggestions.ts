@@ -4,35 +4,35 @@ import { type ApiTaskFile, serializeFile } from "./wire.ts";
 
 /**
  * Build the patch that applies a pending suggestion: take its proposed
- * frontmatter changes AND delete `pepper_suggests` in the same write so
+ * frontmatter changes AND delete `agent_suggests` in the same write so
  * the file does not keep a stale suggestion on it.
  *
  * `repo.update` treats `undefined` as "delete this key", so spreading the
- * patch and then setting `pepper_suggests: undefined` clears it.
+ * patch and then setting `agent_suggests: undefined` clears it.
  */
 function applyPatch(file: TaskFile): Record<string, unknown> | undefined {
-  const sugg = file.entity.pepper_suggests;
+  const sugg = file.entity.agent_suggests;
   if (sugg === undefined) return undefined;
-  return { ...sugg.patch, pepper_suggests: undefined };
+  return { ...sugg.patch, agent_suggests: undefined };
 }
 
 /**
- * Dismiss writes a snooze marker (`pepper_dismissed_at`) so the agent
+ * Dismiss writes a snooze marker (`agent_dismissed_at`) so the agent
  * doesn't re-propose the same change on the next groom. MockAgent +
  * HermesAgent both skip files dismissed within the snooze window
  * (default 24h). After the window, the file is eligible again.
  */
 function dismissPatch(now: Date): Record<string, unknown> {
   return {
-    pepper_suggests: undefined,
-    pepper_dismissed_at: now.toISOString(),
+    agent_suggests: undefined,
+    agent_dismissed_at: now.toISOString(),
   };
 }
 
 /**
  * POST /api/suggestions/:taskId/approve
  *
- * Apply the file's pending `pepper_suggests` to its real fields and clear
+ * Apply the file's pending `agent_suggests` to its real fields and clear
  * the suggestion in one atomic write. Refuses with 409 if the file has
  * drifted since the suggestion was proposed — the staleness gate
  * (subagent #5 / codex C5).
@@ -45,7 +45,7 @@ export async function handleApprove(
   if (!file) {
     return Response.json({ error: `no task with id "${taskId}"` }, { status: 404 });
   }
-  const sugg = file.entity.pepper_suggests;
+  const sugg = file.entity.agent_suggests;
   if (sugg === undefined) {
     return Response.json({ error: "no pending suggestion on this task" }, { status: 404 });
   }
@@ -61,7 +61,7 @@ export async function handleApprove(
   }
   const patch = applyPatch(file);
   if (patch === undefined) {
-    // Defensive: applyPatch only returns undefined if pepper_suggests is gone,
+    // Defensive: applyPatch only returns undefined if agent_suggests is gone,
     // but we already checked above. Keeps the type checker happy.
     return Response.json({ error: "no pending suggestion on this task" }, { status: 404 });
   }
@@ -72,7 +72,7 @@ export async function handleApprove(
 /**
  * POST /api/suggestions/:taskId/dismiss
  *
- * Clear the pending `pepper_suggests` without applying its patch. No
+ * Clear the pending `agent_suggests` without applying its patch. No
  * staleness check needed — dismiss never touches "real" fields.
  */
 export async function handleDismiss(
@@ -83,7 +83,7 @@ export async function handleDismiss(
   if (!file) {
     return Response.json({ error: `no task with id "${taskId}"` }, { status: 404 });
   }
-  if (file.entity.pepper_suggests === undefined) {
+  if (file.entity.agent_suggests === undefined) {
     return Response.json({ error: "no pending suggestion on this task" }, { status: 404 });
   }
   const updated = await repo.update(taskId, dismissPatch(new Date()));
@@ -117,7 +117,7 @@ export type ApproveAllResponse =
  */
 export async function handleApproveAll(repo: MarkdownRepository): Promise<Response> {
   const { files } = await repo.list();
-  const pending = files.filter((f) => f.entity.pepper_suggests !== undefined);
+  const pending = files.filter((f) => f.entity.agent_suggests !== undefined);
 
   if (pending.length === 0) {
     const body: ApproveAllResponse = { ok: true, applied: [] };
@@ -127,7 +127,7 @@ export async function handleApproveAll(repo: MarkdownRepository): Promise<Respon
   // Phase 1 — pre-validate.
   const stale: ApproveAllStale[] = [];
   for (const f of pending) {
-    const sugg = f.entity.pepper_suggests!;
+    const sugg = f.entity.agent_suggests!;
     if (sugg.base_version !== f.contentHash) {
       stale.push({
         taskId: f.id,

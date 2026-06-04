@@ -21,7 +21,7 @@ describe("privacy lint — detects planted leaks", () => {
   let dir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "pepper-lint-"));
+    dir = await mkdtemp(join(tmpdir(), "agent-lint-"));
     await mkdir(join(dir, "tasks"));
   });
 

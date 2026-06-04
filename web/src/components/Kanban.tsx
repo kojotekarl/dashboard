@@ -33,7 +33,7 @@ type TaskLikeFile = ApiTaskFile & {
     status: TaskStatus;
     priority: ApiTaskFile["entity"]["priority"];
     order: string;
-    pepper_suggests?: ApiTaskFile["entity"]["pepper_suggests"];
+    agent_suggests?: ApiTaskFile["entity"]["agent_suggests"];
   };
 };
 

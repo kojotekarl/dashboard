@@ -8,7 +8,7 @@ let vault: string;
 let watcher: VaultWatcher;
 
 beforeEach(async () => {
-  vault = await mkdtemp(join(tmpdir(), "pepper-watch-"));
+  vault = await mkdtemp(join(tmpdir(), "agent-watch-"));
   await mkdir(join(vault, "tasks"));
   watcher = new VaultWatcher(vault);
   await watcher.start();

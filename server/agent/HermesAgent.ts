@@ -123,7 +123,7 @@ type PromptSummary = Record<string, unknown>;
 
 function summarize(f: TaskFile): PromptSummary {
   const e = f.entity;
-  const dismissed_at = (e as { pepper_dismissed_at?: string }).pepper_dismissed_at;
+  const dismissed_at = (e as { agent_dismissed_at?: string }).agent_dismissed_at;
   const dismissedField = typeof dismissed_at === "string" ? { dismissed_at } : {};
   if (e.type === "goal") {
     return {
@@ -169,7 +169,7 @@ export function buildPrompt(input: GroomInput): string {
   const today = input.now.toISOString().slice(0, 10);
   const vault = input.files.map(summarize);
   return [
-    `You are Pepper, helping me decide what to focus on today.`,
+    `You are an agent, helping me decide what to focus on today.`,
     `Today is ${today}.`,
     ``,
     `My current goals, tasks, routines, and projects:`,
@@ -254,7 +254,7 @@ export function parseAgentResponse(text: string): ParsedShape | undefined {
 }
 
 /** Forbidden patch keys — defense in depth against a model trying to set them. */
-const FORBIDDEN_PATCH_KEYS: ReadonlySet<string> = new Set(["id", "type", "pepper_suggests"]);
+const FORBIDDEN_PATCH_KEYS: ReadonlySet<string> = new Set(["id", "type", "agent_suggests"]);
 
 export function coerceSuggestions(rawSuggestions: unknown[], input: GroomInput): Suggestion[] {
   const isoNow = input.now.toISOString();

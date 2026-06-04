@@ -34,7 +34,7 @@ export const SNOOZE_WINDOW_MS = 24 * 60 * 60 * 1000;
  * re-propose than silently swallow a real task.
  */
 function isSnoozed(file: TaskFile, now: Date): boolean {
-  const raw = (file.entity as { pepper_dismissed_at?: string }).pepper_dismissed_at;
+  const raw = (file.entity as { agent_dismissed_at?: string }).agent_dismissed_at;
   if (typeof raw !== "string") return false;
   const ts = Date.parse(raw);
   if (Number.isNaN(ts)) return false;

@@ -57,9 +57,9 @@ the batch-review modal opens with Approve / Dismiss for each row.
 ```
 
 A suggestion is stored in the target file's frontmatter as
-`pepper_suggests: {patch, reason, base_version, provider, created_at}`.
+`agent_suggests: {patch, reason, base_version, provider, created_at}`.
 Approving applies the patch + clears the suggestion in one atomic write.
-Dismissing also stamps `pepper_dismissed_at` so the agent doesn't propose
+Dismissing also stamps `agent_dismissed_at` so the agent doesn't propose
 the same thing again for 24 hours.
 
 ## Configuration
@@ -82,7 +82,7 @@ Copy `.env.example` to `.env` to get a commented template.
 ## Using your own vault (recommended once you start grooming for real)
 
 Don't groom against the committed `sample-vault/` — every `Groom my day`
-click writes `pepper_suggests:` blocks into the files, which then show
+click writes `agent_suggests:` blocks into the files, which then show
 up as dirty in `git status`. Use a separate dev vault:
 
 ```bash
@@ -164,12 +164,12 @@ repo so it doesn't drift). The user-visible commitments:
   markdown you do. No second store to keep in sync.
 - **Lex ranks** (`a..z` strings) for column order, so a drag rewrites
   exactly one card's `order` field instead of N siblings.
-- **`contentHash` excludes `pepper_suggests`** so writing a suggestion
+- **`contentHash` excludes `agent_suggests`** so writing a suggestion
   doesn't invalidate its own base version. Approving compares
-  `pepper_suggests.base_version` against the file's current hash; if
+  `agent_suggests.base_version` against the file's current hash; if
   the file drifted (e.g., you dragged it after grooming), the suggestion
   is marked stale.
-- **Server is the sole writer of `pepper_suggests:`.** The agent returns
+- **Server is the sole writer of `agent_suggests:`.** The agent returns
   typed `Suggestion[]`; the server validates and writes. Closes Hermes's
   `--yolo` trust boundary at the code level, not the prompt level.
 - **Atomic writes via tmp + rename** plus a watcher self-write window so

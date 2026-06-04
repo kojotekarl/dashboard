@@ -13,7 +13,7 @@ let vault: string;
 let canonicalRoot: string;
 
 beforeEach(async () => {
-  vault = await mkdtemp(join(tmpdir(), "pepper-guard-"));
+  vault = await mkdtemp(join(tmpdir(), "agent-guard-"));
   await mkdir(join(vault, "tasks"));
   canonicalRoot = canonicalizeVaultRoot(vault);
 });

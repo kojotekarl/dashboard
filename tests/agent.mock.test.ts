@@ -11,7 +11,7 @@ let repo: MarkdownRepository;
 const NOW = new Date("2026-06-04T10:00:00Z");
 
 beforeEach(async () => {
-  vault = await mkdtemp(join(tmpdir(), "pepper-mock-"));
+  vault = await mkdtemp(join(tmpdir(), "agent-mock-"));
   await mkdir(join(vault, "tasks"));
   await mkdir(join(vault, "goals"));
   await mkdir(join(vault, "routines"));
@@ -128,7 +128,7 @@ describe("MockAgent.groom", () => {
     await seed("goals/g.md", { id: "g", title: "G", type: "goal", status: "active", priority: "P1" });
     await seed("tasks/a.md", {
       id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", goal: "g", order: "b",
-      pepper_dismissed_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(), // 1h ago
+      agent_dismissed_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(), // 1h ago
     });
     await seed("tasks/b.md", { id: "t-b", title: "B", type: "task", status: "backlog", priority: "P1", goal: "g", order: "c" });
 
@@ -142,18 +142,18 @@ describe("MockAgent.groom", () => {
     await seed("goals/g.md", { id: "g", title: "G", type: "goal", status: "active", priority: "P1" });
     await seed("tasks/a.md", {
       id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", goal: "g", order: "b",
-      pepper_dismissed_at: new Date(NOW.getTime() - 25 * 60 * 60 * 1000).toISOString(), // 25h ago
+      agent_dismissed_at: new Date(NOW.getTime() - 25 * 60 * 60 * 1000).toISOString(), // 25h ago
     });
 
     const { suggestions } = await new MockAgent().groom({ files: await loadFiles(), now: NOW });
     expect(suggestions.map((s) => s.taskId)).toContain("t-a");
   });
 
-  test("invalid pepper_dismissed_at is treated as not-dismissed (safer than swallowing the task)", async () => {
+  test("invalid agent_dismissed_at is treated as not-dismissed (safer than swallowing the task)", async () => {
     await seed("goals/g.md", { id: "g", title: "G", type: "goal", status: "active", priority: "P1" });
     await seed("tasks/a.md", {
       id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", goal: "g", order: "b",
-      pepper_dismissed_at: "not-a-date",
+      agent_dismissed_at: "not-a-date",
     });
 
     const { suggestions } = await new MockAgent().groom({ files: await loadFiles(), now: NOW });
@@ -163,7 +163,7 @@ describe("MockAgent.groom", () => {
   test("snooze also applies to daily routines", async () => {
     await seed("routines/walk.md", {
       id: "r-walk", title: "Walk", type: "routine", status: "backlog", priority: "P2", order: "b", recurrence: "daily",
-      pepper_dismissed_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(), // 1h ago
+      agent_dismissed_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(), // 1h ago
     });
 
     const { suggestions } = await new MockAgent().groom({ files: await loadFiles(), now: NOW });

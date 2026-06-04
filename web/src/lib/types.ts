@@ -9,7 +9,7 @@ export type Priority = "P0" | "P1" | "P2" | "P3";
 export type Recurrence = "daily" | "weekly";
 export type AgentProviderName = "mock" | "hermes";
 
-export type PepperSuggests = {
+export type AgentSuggestion = {
   patch: Record<string, unknown>;
   reason: string;
   base_version: string;
@@ -29,7 +29,7 @@ type TaskLike = {
   estimate: string | null;
   depends_on: string[];
   order: string;
-  pepper_suggests?: PepperSuggests;
+  agent_suggests?: AgentSuggestion;
 };
 
 export type Entity =
@@ -43,7 +43,7 @@ export type Entity =
       status: GoalStatus;
       priority: Priority;
       target_date?: string | null;
-      pepper_suggests?: PepperSuggests;
+      agent_suggests?: AgentSuggestion;
     }
   | {
       type: "project";
@@ -53,7 +53,7 @@ export type Entity =
       priority: Priority;
       goal?: string | null;
       due?: string | null;
-      pepper_suggests?: PepperSuggests;
+      agent_suggests?: AgentSuggestion;
     };
 
 export type ApiTaskFile = {

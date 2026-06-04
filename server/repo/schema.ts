@@ -22,14 +22,14 @@ export type Recurrence = z.infer<typeof Recurrence>;
 
 // ─── Suggestion embedded in a file's frontmatter ────────────────────
 
-export const PepperSuggests = z.object({
+export const AgentSuggestion = z.object({
   patch: z.record(z.string(), z.unknown()),
   reason: z.string().min(1),
   base_version: z.string().min(1),
   provider: z.enum(["mock", "hermes"]),
   created_at: z.string().min(1), // ISO datetime
 });
-export type PepperSuggests = z.infer<typeof PepperSuggests>;
+export type AgentSuggestion = z.infer<typeof AgentSuggestion>;
 
 // ─── Discriminated entity union (one per file) ──────────────────────
 //
@@ -48,13 +48,13 @@ const BaseTaskLike = {
   estimate: z.string().nullable().optional(),
   depends_on: z.array(z.string()).default([]),
   order: z.string().min(1),
-  pepper_suggests: PepperSuggests.optional(),
+  agent_suggests: AgentSuggestion.optional(),
   /**
    * ISO datetime of when the user last dismissed a suggestion on this file.
    * Agents skip the file while this is within the snooze window (default 24h).
    * Set by handleDismiss; survives across grooms.
    */
-  pepper_dismissed_at: z.string().min(1).optional(),
+  agent_dismissed_at: z.string().min(1).optional(),
 } as const;
 
 export const TaskEntity = z.object({
@@ -79,8 +79,8 @@ export const GoalEntity = z.object({
   status: GoalStatus,
   priority: Priority,
   target_date: z.string().nullable().optional(),
-  pepper_suggests: PepperSuggests.optional(),
-  pepper_dismissed_at: z.string().min(1).optional(),
+  agent_suggests: AgentSuggestion.optional(),
+  agent_dismissed_at: z.string().min(1).optional(),
 });
 export const ProjectEntity = z.object({
   type: z.literal("project"),
@@ -90,8 +90,8 @@ export const ProjectEntity = z.object({
   priority: Priority,
   goal: z.string().min(1).nullable().optional(),
   due: z.string().nullable().optional(),
-  pepper_suggests: PepperSuggests.optional(),
-  pepper_dismissed_at: z.string().min(1).optional(),
+  agent_suggests: AgentSuggestion.optional(),
+  agent_dismissed_at: z.string().min(1).optional(),
 });
 
 export const Entity = z.discriminatedUnion("type", [
@@ -246,9 +246,9 @@ export function parseEntity(
       ...(type === "goal"
         ? { target_date: coerceString(data.target_date) ?? null }
         : { goal: coerceString(data.goal) ?? null, due: coerceString(data.due) ?? null }),
-      ...(data.pepper_suggests !== undefined ? { pepper_suggests: data.pepper_suggests } : {}),
-      ...(coerceIsoString(data.pepper_dismissed_at) !== undefined
-        ? { pepper_dismissed_at: coerceIsoString(data.pepper_dismissed_at) }
+      ...(data.agent_suggests !== undefined ? { agent_suggests: data.agent_suggests } : {}),
+      ...(coerceIsoString(data.agent_dismissed_at) !== undefined
+        ? { agent_dismissed_at: coerceIsoString(data.agent_dismissed_at) }
         : {}),
     };
   } else {
@@ -270,9 +270,9 @@ export function parseEntity(
       estimate: coerceString(data.estimate) ?? null,
       depends_on,
       order,
-      ...(data.pepper_suggests !== undefined ? { pepper_suggests: data.pepper_suggests } : {}),
-      ...(coerceIsoString(data.pepper_dismissed_at) !== undefined
-        ? { pepper_dismissed_at: coerceIsoString(data.pepper_dismissed_at) }
+      ...(data.agent_suggests !== undefined ? { agent_suggests: data.agent_suggests } : {}),
+      ...(coerceIsoString(data.agent_dismissed_at) !== undefined
+        ? { agent_dismissed_at: coerceIsoString(data.agent_dismissed_at) }
         : {}),
     };
     if (type === "routine") {

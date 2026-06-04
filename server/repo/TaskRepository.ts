@@ -7,7 +7,7 @@ import type { Entity, ParseWarning } from "./schema.ts";
  * Obsidian/plugin keys we don't model. `update()` preserves them by mutating
  * the original object rather than rebuilding from `entity`.
  *
- * `contentHash` is computed over the file with `pepper_suggests` excluded —
+ * `contentHash` is computed over the file with `agent_suggests` excluded —
  * so writing a suggestion does NOT invalidate the base version of the
  * suggestion itself. (T7 / approve uses this to detect staleness.)
  */

@@ -2,7 +2,7 @@ import type { TaskFile } from "../repo/TaskRepository.ts";
 
 /**
  * A single proposed change to one task. Returned by an AgentProvider; the
- * server then validates + writes it as `pepper_suggests:` on the file.
+ * server then validates + writes it as `agent_suggests:` on the file.
  *
  * `baseVersion` snapshots the file's contentHash at proposal time so T7's
  * approve handler can refuse to apply if the file has drifted since (the

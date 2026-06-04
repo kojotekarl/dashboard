@@ -248,10 +248,10 @@ describe("coerceSuggestions — defense in depth", () => {
     expect(out.map((s) => s.taskId)).toEqual(["t-real"]);
   });
 
-  test("strips forbidden patch keys (id, type, pepper_suggests)", async () => {
+  test("strips forbidden patch keys (id, type, agent_suggests)", async () => {
     const out = coerceSuggestions(
       [
-        { taskId: "t-1", patch: { status: "today", id: "evil", type: "rocket", pepper_suggests: {} }, reason: "x" },
+        { taskId: "t-1", patch: { status: "today", id: "evil", type: "rocket", agent_suggests: {} }, reason: "x" },
       ],
       { files: [mkTask("t-1")], now: NOW },
     );
