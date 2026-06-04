@@ -31,6 +31,8 @@ export type RepoListing = {
 export interface TaskRepository {
   list(): Promise<RepoListing>;
   get(id: string): Promise<TaskFile | undefined>;
+  /** Re-parse a single file by its vault-relative path (fast path for the watcher). */
+  peek(relPath: string): Promise<TaskFile | undefined>;
   /**
    * Apply a shallow patch to the file's frontmatter and atomically rewrite it.
    * Unknown keys not mentioned in `patch` are preserved verbatim.

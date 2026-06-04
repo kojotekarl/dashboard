@@ -70,6 +70,17 @@ export class MarkdownRepository implements TaskRepository {
     return files.find((f) => f.id === id);
   }
 
+  /**
+   * Re-parse a single file by its vault-relative path. Used by the file
+   * watcher to attach a fresh contentHash to broadcast events without
+   * re-scanning the whole vault on every change.
+   */
+  async peek(relPath: string): Promise<TaskFile | undefined> {
+    const path = join(this.vaultPath, relPath);
+    const result = await this.parseFile(path, relPath);
+    return result.file;
+  }
+
   async update(id: string, patch: Record<string, unknown>): Promise<TaskFile> {
     const current = await this.get(id);
     if (!current) {

@@ -3,7 +3,16 @@ import type { FileEvent } from "./watcher.ts";
 
 export type BroadcastMessage =
   | { type: "hello"; clients: number }
-  | { type: "file_event"; event: { kind: FileEvent["type"]; relPath: string; mtimeMs: number } };
+  | {
+      type: "file_event";
+      event: {
+        kind: FileEvent["type"];
+        relPath: string;
+        mtimeMs: number;
+        /** Current contentHash after the change. Absent for unlink and parse failures. */
+        contentHash?: string;
+      };
+    };
 
 export class WebSocketBroadcaster {
   private readonly clients = new Set<ServerWebSocket<unknown>>();
@@ -33,9 +42,14 @@ export class WebSocketBroadcaster {
 }
 
 /** Convert a watcher event into the wire shape sent over the socket. */
-export function fileEventToMessage(e: FileEvent): BroadcastMessage {
+export function fileEventToMessage(e: FileEvent, contentHash?: string): BroadcastMessage {
   return {
     type: "file_event",
-    event: { kind: e.type, relPath: e.relPath, mtimeMs: e.mtimeMs },
+    event: {
+      kind: e.type,
+      relPath: e.relPath,
+      mtimeMs: e.mtimeMs,
+      ...(contentHash !== undefined ? { contentHash } : {}),
+    },
   };
 }

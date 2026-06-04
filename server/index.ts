@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
+import { handleListTasks, handlePatchTask, matchTaskId } from "./api/tasks.ts";
 import { loadConfig } from "./config.ts";
 import { log } from "./log.ts";
 import { MarkdownRepository } from "./repo/MarkdownRepository.ts";
@@ -19,8 +20,20 @@ const repo = new MarkdownRepository(config.vaultPath, {
   beforeWrite: (path) => watcher.suppressNext(path),
 });
 
-watcher.on((event) => {
-  broadcaster.broadcast(fileEventToMessage(event));
+watcher.on(async (event) => {
+  // Attach the post-change contentHash so clients can dedupe echoes against
+  // their optimistic state (subagent #2 — version-token precedence).
+  // Unlink events have no file to hash.
+  let contentHash: string | undefined;
+  if (event.type !== "unlink") {
+    try {
+      const file = await repo.peek(event.relPath);
+      contentHash = file?.contentHash;
+    } catch {
+      // Best-effort; if the read races a subsequent change we just omit the hash.
+    }
+  }
+  broadcaster.broadcast(fileEventToMessage(event, contentHash));
   log.debug("file event", { kind: event.type, relPath: event.relPath });
 });
 
@@ -46,6 +59,18 @@ const server = Bun.serve({
       const upgraded = srv.upgrade(req);
       if (upgraded) return undefined;
       return new Response("WebSocket upgrade failed", { status: 400 });
+    }
+
+    if (url.pathname === "/api/tasks" && req.method === "GET") {
+      return handleListTasks(repo);
+    }
+
+    const taskId = matchTaskId(url.pathname);
+    if (taskId !== undefined && req.method === "PATCH") {
+      return req
+        .json()
+        .catch(() => null)
+        .then((body) => handlePatchTask(repo, taskId, body));
     }
 
     return new Response("Not Found", { status: 404 });
