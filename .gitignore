@@ -1,0 +1,26 @@
+# Secrets & local config — NEVER commit real values
+.env
+.env.local
+*.local.*
+
+# Personal / agent tooling (machine-specific paths, not part of the app)
+.claude/
+CLAUDE.md
+
+# Private vaults — only sample-vault/ is committed.
+# Point VAULT_PATH in .env at these for real/dev data.
+/private-vault/
+/dev-vault/
+/real-vault/
+
+# Dependencies & build output
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+*.log
+
+# OS cruft
+.DS_Store
+Thumbs.db
