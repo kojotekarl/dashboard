@@ -8,9 +8,14 @@
     "bun": ">=1.1.0"
   },
   "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta -k --kill-others-on-fail \"bun run server:dev\" \"bun run web:dev\"",
     "server:dev": "bun run --watch server/index.ts",
     "server:start": "bun run server/index.ts",
-    "typecheck": "tsc --noEmit"
+    "web:dev": "cd web && bun run dev",
+    "web:build": "cd web && bun run build",
+    "web:install": "cd web && bun install",
+    "typecheck": "tsc --noEmit && cd web && bun run typecheck",
+    "test": "bun test"
   },
   "dependencies": {
     "chokidar": "^5.0.0",
@@ -19,6 +24,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "concurrently": "^10.0.3",
     "typescript": "^5.5.4"
   }
 }
