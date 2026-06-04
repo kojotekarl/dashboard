@@ -1,7 +1,9 @@
 import { basename } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
-import { MockAgent } from "./agent/MockAgent.ts";
 import type { AgentProvider } from "./agent/AgentProvider.ts";
+import { HermesAgent } from "./agent/HermesAgent.ts";
+import { MockAgent } from "./agent/MockAgent.ts";
+import { defaultRun } from "./agent/runner.ts";
 import { handleGroom } from "./api/agent.ts";
 import {
   handleApprove,
@@ -10,7 +12,7 @@ import {
   matchSuggestionAction,
 } from "./api/suggestions.ts";
 import { handleListTasks, handlePatchTask, matchTaskId } from "./api/tasks.ts";
-import { loadConfig } from "./config.ts";
+import { type Config, loadConfig } from "./config.ts";
 import { log } from "./log.ts";
 import { MarkdownRepository } from "./repo/MarkdownRepository.ts";
 import { VaultWatcher } from "./watcher.ts";
@@ -29,14 +31,7 @@ const repo = new MarkdownRepository(config.vaultPath, {
   beforeWrite: (path) => watcher.suppressNext(path),
 });
 
-// Agent provider — MockAgent for v1. T6 introduces HermesAgent and a
-// config-driven selector with MockAgent fallback when no Hermes binary.
-const agent: AgentProvider = (() => {
-  if (config.agentProvider === "hermes") {
-    log.warn("AGENT_PROVIDER=hermes requested but HermesAgent ships in T6; using MockAgent for now");
-  }
-  return new MockAgent();
-})();
+const agent: AgentProvider = await createAgent(config);
 
 watcher.on(async (event) => {
   // Attach the post-change contentHash so clients can dedupe echoes against
@@ -148,3 +143,39 @@ const shutdown = async (signal: string): Promise<void> => {
 };
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+// ─── agent factory ──────────────────────────────────────────────────
+//
+// AGENT_PROVIDER=mock   -> MockAgent
+// AGENT_PROVIDER=hermes -> HermesAgent wrapping MockAgent as fallback.
+//                          Startup probes the hermes binary; if it's not
+//                          reachable we still wire HermesAgent (it'll fall
+//                          back automatically and surface a clear error
+//                          in the groom summary), but we log a warning so
+//                          the operator notices.
+async function createAgent(cfg: Config): Promise<AgentProvider> {
+  const mock = new MockAgent();
+  if (cfg.agentProvider === "mock") {
+    log.info("agent: MockAgent (deterministic, no external calls)");
+    return mock;
+  }
+  const bin = cfg.hermesBin ?? "hermes";
+  const probe = await defaultRun(bin, ["--version"], { timeoutMs: 5000 });
+  if (probe.ok) {
+    log.info("agent: HermesAgent", {
+      bin,
+      version: probe.stdout.trim().slice(0, 80),
+      timeoutMs: cfg.hermesTimeoutMs,
+    });
+  } else {
+    log.warn("agent: HermesAgent requested but `hermes --version` failed — calls will fall back to MockAgent", {
+      bin,
+      stderr: probe.stderr.trim().slice(0, 200),
+    });
+  }
+  return new HermesAgent({
+    bin,
+    timeoutMs: cfg.hermesTimeoutMs,
+    fallback: mock,
+  });
+}
