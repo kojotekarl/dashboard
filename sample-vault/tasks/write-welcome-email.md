@@ -11,6 +11,6 @@ scheduled: null
 estimate: 30m
 recurrence: null
 depends_on: [t-draft-issue-01]
-order: 4
+order: e
 ---
 Auto-sent on signup. Needs the issue voice nailed first.

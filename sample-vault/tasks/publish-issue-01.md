@@ -11,6 +11,6 @@ scheduled: null
 estimate: 20m
 recurrence: null
 depends_on: [t-draft-issue-01, t-design-signup-page]
-order: 5
+order: f
 ---
 The finish line for the goal. Can't start until the draft and signup page are done.

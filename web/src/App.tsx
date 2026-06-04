@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Kanban, type MovePatch } from "./components/Kanban.tsx";
 import { api, ApiError } from "./lib/api.ts";
 import { OptimisticTracker } from "./lib/optimistic.ts";
 import type { ApiTaskFile, ParseWarning, ServerMessage } from "./lib/types.ts";
@@ -9,8 +10,6 @@ type LoadState =
   | { kind: "loading" }
   | { kind: "ready"; files: ApiTaskFile[]; warnings: ParseWarning[] }
   | { kind: "error"; message: string };
-
-const COLUMN_ORDER = ["backlog", "today", "in-progress", "blocked", "done"] as const;
 
 type GroomState =
   | { kind: "idle" }
@@ -23,8 +22,14 @@ export function App() {
   const [connection, setConnection] = useState<ConnectionState>("closed");
   const [lastEvent, setLastEvent] = useState<ServerMessage | null>(null);
   const [groom, setGroom] = useState<GroomState>({ kind: "idle" });
+  const [moveError, setMoveError] = useState<string | null>(null);
 
-  // Tracker is created once per app instance; never recreated on re-render.
+  // Latest files snapshot — used for revert on drag-PATCH failure.
+  const filesRef = useRef<ApiTaskFile[] | null>(null);
+  useEffect(() => {
+    filesRef.current = state.kind === "ready" ? state.files : null;
+  }, [state]);
+
   const tracker = useMemo(() => new OptimisticTracker(), []);
 
   const refetch = useCallback(async () => {
@@ -37,7 +42,6 @@ export function App() {
     setGroom({ kind: "running" });
     try {
       const res = await api.groom();
-      // Record the new contentHashes so the echo dedupe knows about them.
       for (const s of res.suggestions) tracker.record(s.file.contentHash);
       await refetch();
       setGroom({
@@ -51,6 +55,37 @@ export function App() {
       setGroom({ kind: "error", message: msg });
     }
   }, [refetch, tracker]);
+
+  const onMove = useCallback(
+    async (taskId: string, patch: MovePatch) => {
+      const snapshot = filesRef.current;
+      if (snapshot === null) return;
+
+      // Optimistic: apply locally so the card stays in its new column / position.
+      setState((prev) =>
+        prev.kind === "ready"
+          ? { ...prev, files: prev.files.map((f) => mergeOptimistic(f, taskId, patch)) }
+          : prev,
+      );
+      setMoveError(null);
+
+      try {
+        const updated = await api.patchTask(taskId, patch);
+        tracker.record(updated.contentHash);
+        setState((prev) =>
+          prev.kind === "ready"
+            ? { ...prev, files: prev.files.map((f) => (f.id === taskId ? updated : f)) }
+            : prev,
+        );
+      } catch (err: unknown) {
+        // Revert to the pre-drag state and surface the error.
+        setState((prev) => (prev.kind === "ready" ? { ...prev, files: snapshot } : prev));
+        const msg = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);
+        setMoveError(msg);
+      }
+    },
+    [tracker],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -68,10 +103,8 @@ export function App() {
     const ws = new DashboardWS(dashboardWsUrl());
     const offState = ws.onState(setConnection);
     const offMsg = ws.onMessage((msg) => {
-      // Drop echoes of our own writes via the contentHash version token.
       if (msg.type === "file_event" && tracker.isEcho(msg.event.contentHash)) return;
       setLastEvent(msg);
-      // Hand-edits and other-client writes land here; refresh the board.
       if (msg.type === "file_event") {
         void refetch();
       }
@@ -84,6 +117,10 @@ export function App() {
     };
   }, [tracker, refetch]);
 
+  const tasks = state.kind === "ready" ? state.files.filter(isTaskLike) : [];
+  const goalCount = state.kind === "ready" ? state.files.filter((f) => f.entity.type === "goal").length : 0;
+  const projectCount = state.kind === "ready" ? state.files.filter((f) => f.entity.type === "project").length : 0;
+
   return (
     <main style={styles.main}>
       <header style={styles.header}>
@@ -93,22 +130,40 @@ export function App() {
           type="button"
           onClick={() => void onGroom()}
           disabled={groom.kind === "running"}
-          style={{
-            ...styles.groomBtn,
-            ...(groom.kind === "running" ? styles.groomBtnRunning : {}),
-          }}
+          style={{ ...styles.groomBtn, ...(groom.kind === "running" ? styles.groomBtnRunning : {}) }}
         >
           {groom.kind === "running" ? "Grooming…" : "Groom my day"}
         </button>
       </header>
 
       <GroomStatus state={groom} />
+      {moveError !== null && (
+        <p style={{ ...styles.groomMsg, ...styles.groomErr }}>
+          Move failed (reverted): {moveError}
+        </p>
+      )}
 
       {state.kind === "loading" && <p>Loading vault…</p>}
       {state.kind === "error" && (
-        <pre style={styles.error}>Could not load /api/tasks:{"\n"}{state.message}</pre>
+        <pre style={styles.error}>
+          Could not load /api/tasks:{"\n"}
+          {state.message}
+        </pre>
       )}
-      {state.kind === "ready" && <Board files={state.files} warnings={state.warnings} />}
+      {state.kind === "ready" && (
+        <>
+          <p style={styles.summary}>
+            {tasks.length} task{tasks.length === 1 ? "" : "s"}, {goalCount} goal{goalCount === 1 ? "" : "s"},{" "}
+            {projectCount} project{projectCount === 1 ? "" : "s"}.
+            {state.warnings.length > 0 && (
+              <span style={styles.warning}>
+                {" "}· {state.warnings.length} parse warning{state.warnings.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </p>
+          <Kanban tasks={tasks} onMove={onMove} />
+        </>
+      )}
 
       {lastEvent !== null && (
         <footer style={styles.footer}>
@@ -124,6 +179,11 @@ export function App() {
   );
 }
 
+function ConnectionBadge({ state }: { state: ConnectionState }) {
+  const color = state === "open" ? "#1f8a3d" : state === "connecting" ? "#b07e00" : "#9a1f1f";
+  return <span style={{ ...styles.badge, background: color }}>ws: {state}</span>;
+}
+
 function GroomStatus({ state }: { state: GroomState }) {
   if (state.kind === "idle") return null;
   if (state.kind === "running") return <p style={styles.groomMsg}>Pepper is thinking…</p>;
@@ -134,95 +194,33 @@ function GroomStatus({ state }: { state: GroomState }) {
   return (
     <p style={{ ...styles.groomMsg, ...styles.groomOk }}>
       <strong>{tag}</strong> · {state.summary}{" "}
-      {state.count > 0 && <span style={styles.groomHint}>(scroll the board — cards with proposals are outlined in gold)</span>}
+      {state.count > 0 && (
+        <span style={styles.groomHint}>(cards with proposals are outlined in gold)</span>
+      )}
     </p>
   );
 }
 
-function ConnectionBadge({ state }: { state: ConnectionState }) {
-  const color = state === "open" ? "#1f8a3d" : state === "connecting" ? "#b07e00" : "#9a1f1f";
-  return (
-    <span style={{ ...styles.badge, background: color }}>
-      ws: {state}
-    </span>
-  );
+function isTaskLike(f: ApiTaskFile): boolean {
+  return f.entity.type === "task" || f.entity.type === "learning-step" || f.entity.type === "routine";
 }
 
-function Board({ files, warnings }: { files: ApiTaskFile[]; warnings: ParseWarning[] }) {
-  const tasks = files.filter(
-    (f) => f.entity.type === "task" || f.entity.type === "learning-step" || f.entity.type === "routine",
-  );
-  const others = files.filter(
-    (f) => f.entity.type === "goal" || f.entity.type === "project",
-  );
-
-  return (
-    <div>
-      <p style={styles.summary}>
-        {tasks.length} task{tasks.length === 1 ? "" : "s"},{" "}
-        {others.filter((f) => f.entity.type === "goal").length} goal
-        {others.filter((f) => f.entity.type === "goal").length === 1 ? "" : "s"},{" "}
-        {others.filter((f) => f.entity.type === "project").length} project
-        {others.filter((f) => f.entity.type === "project").length === 1 ? "" : "s"}.
-        {warnings.length > 0 && (
-          <span style={styles.warning}> · {warnings.length} parse warning{warnings.length === 1 ? "" : "s"}</span>
-        )}
-      </p>
-
-      <div style={styles.board}>
-        {COLUMN_ORDER.map((status) => {
-          const inColumn = tasks.filter((f) => "status" in f.entity && f.entity.status === status);
-          return (
-            <section key={status} style={styles.column}>
-              <h2 style={styles.colHead}>
-                {status} <span style={styles.colCount}>{inColumn.length}</span>
-              </h2>
-              {inColumn.length === 0 ? (
-                <p style={styles.empty}>—</p>
-              ) : (
-                inColumn.map((f) => <Card key={f.id} file={f} />)
-              )}
-            </section>
-          );
-        })}
-      </div>
-    </div>
-  );
+/** Apply an optimistic patch to a file. Only known-safe fields are merged. */
+function mergeOptimistic(f: ApiTaskFile, taskId: string, patch: MovePatch): ApiTaskFile {
+  if (f.id !== taskId) return f;
+  const e = f.entity;
+  if (e.type !== "task" && e.type !== "learning-step" && e.type !== "routine") return f;
+  const nextEntity = {
+    ...e,
+    order: patch.order,
+    ...(patch.status !== undefined ? { status: patch.status } : {}),
+  };
+  return { ...f, entity: nextEntity as ApiTaskFile["entity"] };
 }
 
-function Card({ file }: { file: ApiTaskFile }) {
-  const e = file.entity;
-  if (e.type !== "task" && e.type !== "learning-step" && e.type !== "routine") return null;
-  const hasSuggestion = e.pepper_suggests !== undefined;
-  return (
-    <article style={{ ...styles.card, ...(hasSuggestion ? styles.cardWithSuggestion : {}) }}>
-      <header style={styles.cardHead}>
-        <span style={styles.cardPriority}>{e.priority}</span>
-        <strong style={styles.cardTitle}>{e.title}</strong>
-      </header>
-      <div style={styles.cardMeta}>
-        {e.project !== null && <span>project: {e.project}</span>}
-        {e.goal !== null && <span> · goal: {e.goal}</span>}
-        {e.due !== null && <span> · due: {e.due}</span>}
-      </div>
-      {hasSuggestion && (
-        <div style={styles.suggestion}>
-          Pepper suggests: <code>{JSON.stringify(e.pepper_suggests!.patch)}</code> —{" "}
-          {e.pepper_suggests!.reason}
-        </div>
-      )}
-    </article>
-  );
-}
-
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   main: { padding: "2rem", maxWidth: 1400, margin: "0 auto" },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: "1rem",
-    marginBottom: "1.5rem",
-  },
+  header: { display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem" },
   h1: { margin: 0, fontSize: "1.5rem" },
   badge: {
     color: "white",
@@ -237,7 +235,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "white",
     border: "none",
     padding: "0.45rem 0.9rem",
-    borderRadius: "6px",
+    borderRadius: 6,
     fontSize: "0.9rem",
     fontWeight: 500,
     cursor: "pointer",
@@ -246,71 +244,25 @@ const styles: Record<string, React.CSSProperties> = {
   groomMsg: {
     margin: "0.5rem 0 1rem",
     padding: "0.6rem 0.8rem",
-    borderRadius: "6px",
+    borderRadius: 6,
     fontSize: "0.9rem",
     background: "rgba(176,126,0,0.1)",
     border: "1px solid rgba(176,126,0,0.4)",
   },
   groomOk: { color: "#b07e00" },
-  groomErr: { background: "rgba(154,31,31,0.1)", border: "1px solid rgba(154,31,31,0.5)", color: "#9a1f1f" },
+  groomErr: {
+    background: "rgba(154,31,31,0.1)",
+    border: "1px solid rgba(154,31,31,0.5)",
+    color: "#9a1f1f",
+  },
   groomHint: { opacity: 0.7, fontSize: "0.8rem" },
   summary: { color: "#888", fontSize: "0.9rem" },
   warning: { color: "#b07e00" },
-  board: {
-    display: "grid",
-    gridTemplateColumns: "repeat(5, 1fr)",
-    gap: "0.75rem",
-  },
-  column: {
-    background: "rgba(127,127,127,0.07)",
-    borderRadius: "8px",
-    padding: "0.75rem",
-    minHeight: 200,
-  },
-  colHead: {
-    margin: "0 0 0.75rem",
-    fontSize: "0.85rem",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    color: "#888",
-    display: "flex",
-    justifyContent: "space-between",
-  },
-  colCount: { fontWeight: "normal", opacity: 0.6 },
-  empty: { color: "#aaa", fontSize: "0.85rem", margin: 0 },
-  card: {
-    background: "var(--card-bg, white)",
-    border: "1px solid rgba(127,127,127,0.2)",
-    borderRadius: "6px",
-    padding: "0.6rem 0.75rem",
-    marginBottom: "0.5rem",
-    fontSize: "0.9rem",
-  },
-  cardWithSuggestion: {
-    boxShadow: "0 0 0 2px rgba(176,126,0,0.35)",
-  },
-  cardHead: { display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.3rem" },
-  cardPriority: {
-    fontSize: "0.7rem",
-    background: "rgba(127,127,127,0.18)",
-    padding: "0.1rem 0.4rem",
-    borderRadius: "3px",
-    fontFamily: "ui-monospace, SFMono-Regular, monospace",
-  },
-  cardTitle: { fontSize: "0.95rem" },
-  cardMeta: { color: "#888", fontSize: "0.78rem" },
-  suggestion: {
-    marginTop: "0.4rem",
-    paddingTop: "0.4rem",
-    borderTop: "1px dashed rgba(176,126,0,0.4)",
-    fontSize: "0.78rem",
-    color: "#b07e00",
-  },
   error: {
     background: "#3a1010",
     color: "#fff",
     padding: "1rem",
-    borderRadius: "4px",
+    borderRadius: 4,
     whiteSpace: "pre-wrap",
   },
   footer: {

@@ -88,6 +88,39 @@ describe("handlePatchTask", () => {
     const res = await handlePatchTask(repo, "", { status: "done" });
     expect(res.status).toBe(400);
   });
+
+  test("400 on invalid order rank (defense in depth — drag patches validated)", async () => {
+    await seed("tasks/x.md", { id: "t-x", title: "x", type: "task", status: "today", priority: "P1", order: "b" });
+    const res = await handlePatchTask(repo, "t-x", { order: "INVALID" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/invalid rank/);
+  });
+
+  test("400 on invalid status enum", async () => {
+    await seed("tasks/x.md", { id: "t-x", title: "x", type: "task", status: "today", priority: "P1", order: "b" });
+    const res = await handlePatchTask(repo, "t-x", { status: "rocket" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/status must be one of/);
+  });
+
+  test("400 on invalid priority enum", async () => {
+    await seed("tasks/x.md", { id: "t-x", title: "x", type: "task", status: "today", priority: "P1", order: "b" });
+    const res = await handlePatchTask(repo, "t-x", { priority: "P9" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/priority must be one of/);
+  });
+
+  test("accepts a valid drag patch (status + order together)", async () => {
+    await seed("tasks/x.md", { id: "t-x", title: "x", type: "task", status: "backlog", priority: "P1", order: "b" });
+    const res = await handlePatchTask(repo, "t-x", { status: "today", order: "n" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { entity: { status: string; order: string } };
+    expect(body.entity.status).toBe("today");
+    expect(body.entity.order).toBe("n");
+  });
 });
 
 describe("matchTaskId", () => {

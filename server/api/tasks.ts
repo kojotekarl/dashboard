@@ -1,4 +1,6 @@
 import type { MarkdownRepository } from "../repo/MarkdownRepository.ts";
+import { assertValidRank } from "../repo/rank.ts";
+import { Priority, TaskStatus } from "../repo/schema.ts";
 import { type ApiTaskFile, serializeFile } from "./wire.ts";
 
 export type { ApiTaskFile };
@@ -39,6 +41,42 @@ export async function handlePatchTask(
     if (FORBIDDEN_PATCH_FIELDS.has(key)) {
       return Response.json(
         { error: `field "${key}" cannot be patched via /api/tasks` },
+        { status: 400 },
+      );
+    }
+  }
+
+  // Defense in depth: validate shape of well-known fields BEFORE the repo
+  // writes them. Without this, a client could persist garbage (e.g. order:
+  // "INVALID", status: "rocket") which would survive on disk until the
+  // next groom or eyes-on inspection.
+  if ("order" in patch) {
+    if (typeof patch.order !== "string") {
+      return Response.json({ error: "order must be a string" }, { status: 400 });
+    }
+    try {
+      assertValidRank(patch.order);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return Response.json({ error: msg }, { status: 400 });
+    }
+  }
+  if ("status" in patch) {
+    const status = patch.status;
+    const validTask = TaskStatus.options as readonly string[];
+    if (typeof status !== "string" || !validTask.includes(status)) {
+      return Response.json(
+        { error: `status must be one of: ${validTask.join(", ")}` },
+        { status: 400 },
+      );
+    }
+  }
+  if ("priority" in patch) {
+    const priority = patch.priority;
+    const validP = Priority.options as readonly string[];
+    if (typeof priority !== "string" || !validP.includes(priority)) {
+      return Response.json(
+        { error: `priority must be one of: ${validP.join(", ")}` },
         { status: 400 },
       );
     }

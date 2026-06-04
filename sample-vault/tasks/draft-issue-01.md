@@ -11,6 +11,6 @@ scheduled: 2026-06-04T09:00
 estimate: 90m
 recurrence: null
 depends_on: []
-order: 1
+order: b
 ---
 Write the full draft of the first issue. Blocks publishing.

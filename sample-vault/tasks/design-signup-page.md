@@ -11,6 +11,6 @@ scheduled: null
 estimate: 60m
 recurrence: null
 depends_on: []
-order: 2
+order: c
 ---
 Simple hero + email field. Halfway done.

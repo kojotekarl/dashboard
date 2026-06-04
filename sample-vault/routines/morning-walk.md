@@ -8,6 +8,6 @@ priority: P2
 scheduled: 2026-06-04T07:30
 estimate: 20m
 recurrence: daily
-order: 1
+order: b
 ---
 Daily movement. Recurs every day; the agent slots it into the usual morning time automatically.
