@@ -1,4 +1,4 @@
-# Pepper Dashboard
+# PA Dashboard
 
 A visual task board where **an agent grooms and you decide.** Tasks, goals,
 and routines live as plain markdown files in a vault folder. The dashboard
