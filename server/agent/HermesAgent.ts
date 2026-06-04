@@ -123,6 +123,8 @@ type PromptSummary = Record<string, unknown>;
 
 function summarize(f: TaskFile): PromptSummary {
   const e = f.entity;
+  const dismissed_at = (e as { pepper_dismissed_at?: string }).pepper_dismissed_at;
+  const dismissedField = typeof dismissed_at === "string" ? { dismissed_at } : {};
   if (e.type === "goal") {
     return {
       id: e.id,
@@ -131,6 +133,7 @@ function summarize(f: TaskFile): PromptSummary {
       status: e.status,
       priority: e.priority,
       target_date: e.target_date ?? null,
+      ...dismissedField,
     };
   }
   if (e.type === "project") {
@@ -142,6 +145,7 @@ function summarize(f: TaskFile): PromptSummary {
       priority: e.priority,
       goal: e.goal ?? null,
       due: e.due ?? null,
+      ...dismissedField,
     };
   }
   // task | learning-step | routine
@@ -156,6 +160,7 @@ function summarize(f: TaskFile): PromptSummary {
     due: e.due ?? null,
     scheduled: e.scheduled ?? null,
     estimate: e.estimate ?? null,
+    ...dismissedField,
   };
   return e.type === "routine" ? { ...common, recurrence: e.recurrence } : common;
 }
@@ -183,6 +188,7 @@ export function buildPrompt(input: GroomInput): string {
     `- patch may set: status (backlog|today|in-progress|blocked|done), priority (P0|P1|P2|P3), scheduled (ISO datetime), due (YYYY-MM-DD), estimate.`,
     `- Do not propose changes to tasks already in "today", "done", or "blocked".`,
     `- Favor tasks aligned with active goals.`,
+    `- If a task has a "dismissed_at" timestamp within the last 24 hours, skip it — the user already said "not today" to it.`,
     `- Return ONLY the JSON object. No prose, no fences, no commentary.`,
   ].join("\n");
 }

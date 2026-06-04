@@ -124,6 +124,52 @@ describe("MockAgent.groom", () => {
     expect(summary).toMatch(/already focused/);
   });
 
+  test("skips files dismissed within the snooze window (24h)", async () => {
+    await seed("goals/g.md", { id: "g", title: "G", type: "goal", status: "active", priority: "P1" });
+    await seed("tasks/a.md", {
+      id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", goal: "g", order: "b",
+      pepper_dismissed_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(), // 1h ago
+    });
+    await seed("tasks/b.md", { id: "t-b", title: "B", type: "task", status: "backlog", priority: "P1", goal: "g", order: "c" });
+
+    const { suggestions } = await new MockAgent().groom({ files: await loadFiles(), now: NOW });
+    // t-a is snoozed; should fall back to t-b for the goal slot.
+    expect(suggestions.map((s) => s.taskId)).not.toContain("t-a");
+    expect(suggestions.map((s) => s.taskId)).toContain("t-b");
+  });
+
+  test("re-proposes a file dismissed more than 24h ago", async () => {
+    await seed("goals/g.md", { id: "g", title: "G", type: "goal", status: "active", priority: "P1" });
+    await seed("tasks/a.md", {
+      id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", goal: "g", order: "b",
+      pepper_dismissed_at: new Date(NOW.getTime() - 25 * 60 * 60 * 1000).toISOString(), // 25h ago
+    });
+
+    const { suggestions } = await new MockAgent().groom({ files: await loadFiles(), now: NOW });
+    expect(suggestions.map((s) => s.taskId)).toContain("t-a");
+  });
+
+  test("invalid pepper_dismissed_at is treated as not-dismissed (safer than swallowing the task)", async () => {
+    await seed("goals/g.md", { id: "g", title: "G", type: "goal", status: "active", priority: "P1" });
+    await seed("tasks/a.md", {
+      id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", goal: "g", order: "b",
+      pepper_dismissed_at: "not-a-date",
+    });
+
+    const { suggestions } = await new MockAgent().groom({ files: await loadFiles(), now: NOW });
+    expect(suggestions.map((s) => s.taskId)).toContain("t-a");
+  });
+
+  test("snooze also applies to daily routines", async () => {
+    await seed("routines/walk.md", {
+      id: "r-walk", title: "Walk", type: "routine", status: "backlog", priority: "P2", order: "b", recurrence: "daily",
+      pepper_dismissed_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(), // 1h ago
+    });
+
+    const { suggestions } = await new MockAgent().groom({ files: await loadFiles(), now: NOW });
+    expect(suggestions.map((s) => s.taskId)).not.toContain("r-walk");
+  });
+
   test("caps at MAX_TOTAL_SUGGESTIONS even on a busy vault", async () => {
     // 10 unfocused tasks, no goals — only pass 3 fires.
     for (let i = 0; i < 10; i++) {

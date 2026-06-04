@@ -197,6 +197,29 @@ describe("handleDismiss", () => {
     const res = await handleDismiss(repo, "t-a");
     expect(res.status).toBe(404);
   });
+
+  test("dismiss writes pepper_dismissed_at as an ISO timestamp", async () => {
+    await seed("tasks/a.md", { id: "t-a", title: "A", type: "task", status: "backlog", priority: "P0", order: "b" });
+    const agent = scriptedAgent((input) => [{
+      taskId: "t-a", patch: { status: "today" }, reason: "test",
+      baseVersion: input.files.find((f) => f.id === "t-a")!.contentHash,
+      provider: "mock", createdAt: NOW.toISOString(),
+    }]);
+    await handleGroom(repo, agent);
+
+    const before = Date.now();
+    const res = await handleDismiss(repo, "t-a");
+    expect(res.status).toBe(200);
+
+    const file = (await repo.get("t-a"))!;
+    if (file.entity.type !== "task") throw new Error("type narrow");
+    const stamp = (file.entity as { pepper_dismissed_at?: string }).pepper_dismissed_at;
+    expect(typeof stamp).toBe("string");
+    const parsed = Date.parse(stamp!);
+    expect(Number.isFinite(parsed)).toBe(true);
+    expect(parsed).toBeGreaterThanOrEqual(before - 5);
+    expect(parsed).toBeLessThanOrEqual(Date.now() + 5);
+  });
 });
 
 describe("handleApproveAll", () => {

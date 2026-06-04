@@ -21,6 +21,27 @@ const SETTLED_STATUSES: ReadonlySet<string> = new Set([
 const MAX_TOTAL_SUGGESTIONS = 5;
 
 /**
+ * Snooze window after a Dismiss. If the user just said "no, not this one",
+ * the agent should respect that for a while instead of re-proposing it on
+ * the next groom click. 24h gives "not today" semantics with a natural
+ * decay: tomorrow, the task is eligible again.
+ */
+export const SNOOZE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * True iff the file was dismissed within the snooze window. Tolerates an
+ * invalid timestamp by treating it as "not dismissed" — we'd rather
+ * re-propose than silently swallow a real task.
+ */
+function isSnoozed(file: TaskFile, now: Date): boolean {
+  const raw = (file.entity as { pepper_dismissed_at?: string }).pepper_dismissed_at;
+  if (typeof raw !== "string") return false;
+  const ts = Date.parse(raw);
+  if (Number.isNaN(ts)) return false;
+  return now.getTime() - ts < SNOOZE_WINDOW_MS;
+}
+
+/**
  * Deterministic local "agent". Returns a small set of proposals so the public
  * class repo + graders without Hermes still see the groom-and-approve loop
  * working end-to-end. The HermesAgent ships with the same interface and a
@@ -56,7 +77,8 @@ export class MockAgent implements AgentProvider {
         const e = f.entity;
         if (e.type !== "task" && e.type !== "learning-step") return false;
         if (e.goal !== goalId) return false;
-        return !SETTLED_STATUSES.has(e.status);
+        if (SETTLED_STATUSES.has(e.status)) return false;
+        return !isSnoozed(f, now);
       });
       const top = sortByPriority(candidates)[0];
       if (top) {
@@ -78,6 +100,7 @@ export class MockAgent implements AgentProvider {
       const e = f.entity;
       if (e.type !== "routine" || e.recurrence !== "daily") continue;
       if (SETTLED_STATUSES.has(e.status)) continue;
+      if (isSnoozed(f, now)) continue;
       seen.add(f.id);
       suggestions.push({
         taskId: f.id,
@@ -94,7 +117,8 @@ export class MockAgent implements AgentProvider {
       if (seen.has(f.id)) return false;
       const e = f.entity;
       if (e.type !== "task" && e.type !== "learning-step") return false;
-      return !SETTLED_STATUSES.has(e.status);
+      if (SETTLED_STATUSES.has(e.status)) return false;
+      return !isSnoozed(f, now);
     });
     for (const f of sortByPriority(remaining)) {
       if (suggestions.length >= MAX_TOTAL_SUGGESTIONS) break;

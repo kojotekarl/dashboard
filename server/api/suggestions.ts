@@ -16,8 +16,17 @@ function applyPatch(file: TaskFile): Record<string, unknown> | undefined {
   return { ...sugg.patch, pepper_suggests: undefined };
 }
 
-function clearPatch(): Record<string, unknown> {
-  return { pepper_suggests: undefined };
+/**
+ * Dismiss writes a snooze marker (`pepper_dismissed_at`) so the agent
+ * doesn't re-propose the same change on the next groom. MockAgent +
+ * HermesAgent both skip files dismissed within the snooze window
+ * (default 24h). After the window, the file is eligible again.
+ */
+function dismissPatch(now: Date): Record<string, unknown> {
+  return {
+    pepper_suggests: undefined,
+    pepper_dismissed_at: now.toISOString(),
+  };
 }
 
 /**
@@ -77,7 +86,7 @@ export async function handleDismiss(
   if (file.entity.pepper_suggests === undefined) {
     return Response.json({ error: "no pending suggestion on this task" }, { status: 404 });
   }
-  const updated = await repo.update(taskId, clearPatch());
+  const updated = await repo.update(taskId, dismissPatch(new Date()));
   return Response.json(serializeFile(updated));
 }
 

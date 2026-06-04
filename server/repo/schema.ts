@@ -49,6 +49,12 @@ const BaseTaskLike = {
   depends_on: z.array(z.string()).default([]),
   order: z.string().min(1),
   pepper_suggests: PepperSuggests.optional(),
+  /**
+   * ISO datetime of when the user last dismissed a suggestion on this file.
+   * Agents skip the file while this is within the snooze window (default 24h).
+   * Set by handleDismiss; survives across grooms.
+   */
+  pepper_dismissed_at: z.string().min(1).optional(),
 } as const;
 
 export const TaskEntity = z.object({
@@ -74,6 +80,7 @@ export const GoalEntity = z.object({
   priority: Priority,
   target_date: z.string().nullable().optional(),
   pepper_suggests: PepperSuggests.optional(),
+  pepper_dismissed_at: z.string().min(1).optional(),
 });
 export const ProjectEntity = z.object({
   type: z.literal("project"),
@@ -84,6 +91,7 @@ export const ProjectEntity = z.object({
   goal: z.string().min(1).nullable().optional(),
   due: z.string().nullable().optional(),
   pepper_suggests: PepperSuggests.optional(),
+  pepper_dismissed_at: z.string().min(1).optional(),
 });
 
 export const Entity = z.discriminatedUnion("type", [
@@ -134,6 +142,18 @@ const PRIORITY_ALIASES: Record<string, Priority> = {
 function coerceString(v: unknown): string | undefined {
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return undefined;
+}
+
+/**
+ * Normalize an "ISO datetime" frontmatter value back to a string. js-yaml
+ * happily turns unquoted ISO timestamps into JS Date objects on parse, so
+ * a field we wrote as `now.toISOString()` may round-trip as `Date` instead.
+ * Tolerate both shapes here; reject anything else.
+ */
+function coerceIsoString(v: unknown): string | undefined {
+  if (typeof v === "string" && v.length > 0) return v;
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString();
   return undefined;
 }
 
@@ -227,6 +247,9 @@ export function parseEntity(
         ? { target_date: coerceString(data.target_date) ?? null }
         : { goal: coerceString(data.goal) ?? null, due: coerceString(data.due) ?? null }),
       ...(data.pepper_suggests !== undefined ? { pepper_suggests: data.pepper_suggests } : {}),
+      ...(coerceIsoString(data.pepper_dismissed_at) !== undefined
+        ? { pepper_dismissed_at: coerceIsoString(data.pepper_dismissed_at) }
+        : {}),
     };
   } else {
     // task | learning-step | routine
@@ -248,6 +271,9 @@ export function parseEntity(
       depends_on,
       order,
       ...(data.pepper_suggests !== undefined ? { pepper_suggests: data.pepper_suggests } : {}),
+      ...(coerceIsoString(data.pepper_dismissed_at) !== undefined
+        ? { pepper_dismissed_at: coerceIsoString(data.pepper_dismissed_at) }
+        : {}),
     };
     if (type === "routine") {
       const recRaw = coerceString(data.recurrence)?.toLowerCase().trim();
