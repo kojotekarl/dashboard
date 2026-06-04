@@ -11,7 +11,20 @@ const EnvSchema = z.object({
   HERMES_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
   DASHBOARD_TOKEN: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(["debug", "info"]).default("info"),
+  /**
+   * Read-only mode for the vault.
+   *   off         — default. All mutations allowed.
+   *   strict      — every mutating endpoint returns 403.
+   *   agent-only  — agent may write its own fields (agent_suggests +
+   *                 agent_dismissed_at via groom/dismiss). Anything that
+   *                 would touch real frontmatter fields (status, priority,
+   *                 order, etc.) returns 403. Used when pointing at a real
+   *                 vault before trusting the parser fully.
+   */
+  VAULT_READONLY: z.enum(["off", "strict", "agent-only"]).default("off"),
 });
+
+export type ReadonlyMode = "off" | "strict" | "agent-only";
 
 export type Config = {
   vaultPath: string;
@@ -22,6 +35,7 @@ export type Config = {
   hermesTimeoutMs: number;
   dashboardToken: string | undefined;
   isLanExposed: boolean;
+  vaultReadonly: ReadonlyMode;
 };
 
 export function loadConfig(): Config {
@@ -60,5 +74,6 @@ export function loadConfig(): Config {
     hermesTimeoutMs: env.HERMES_TIMEOUT_MS,
     dashboardToken: env.DASHBOARD_TOKEN,
     isLanExposed,
+    vaultReadonly: env.VAULT_READONLY,
   };
 }

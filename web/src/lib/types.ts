@@ -100,6 +100,18 @@ export type ApproveAllResponse =
     }
   | { ok: false; error: string; applied: ApiTaskFile[]; remaining: string[] };
 
+export type ReadonlyMode = "off" | "strict" | "agent-only";
+
+export type HealthResponse = {
+  ok: boolean;
+  version: string;
+  agentProvider: AgentProviderName;
+  vault: string;
+  wsClients: number;
+  authRequired: boolean;
+  vaultReadonly: ReadonlyMode;
+};
+
 // ─── WebSocket frames ──────────────────────────────────────────────
 
 export type ServerMessage =

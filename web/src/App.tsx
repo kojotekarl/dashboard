@@ -3,7 +3,13 @@ import { BatchReviewModal, type SuggestionRow } from "./components/BatchReviewMo
 import { Kanban, type MovePatch } from "./components/Kanban.tsx";
 import { api, ApiError } from "./lib/api.ts";
 import { OptimisticTracker } from "./lib/optimistic.ts";
-import type { AgentProviderName, ApiTaskFile, ParseWarning, ServerMessage } from "./lib/types.ts";
+import type {
+  AgentProviderName,
+  ApiTaskFile,
+  ParseWarning,
+  ReadonlyMode,
+  ServerMessage,
+} from "./lib/types.ts";
 import { type ConnectionState, DashboardWS } from "./lib/ws.ts";
 import { dashboardWsUrl } from "./lib/wsUrl.ts";
 
@@ -30,6 +36,8 @@ export function App() {
   // Provider of the most recent groom, kept across the modal lifetime so the
   // badge stays accurate even after the user closes and re-opens it.
   const [lastProvider, setLastProvider] = useState<AgentProviderName | null>(null);
+  // VAULT_READONLY mode reported by /health. Drives the read-only banner.
+  const [readonlyMode, setReadonlyMode] = useState<ReadonlyMode>("off");
 
   // Latest files snapshot — used for revert on drag-PATCH failure.
   const filesRef = useRef<ApiTaskFile[] | null>(null);
@@ -249,6 +257,23 @@ export function App() {
     };
   }, [refetch]);
 
+  // Pull the read-only mode from /health on mount so the badge knows.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .health()
+      .then((h) => {
+        if (cancelled) return;
+        setReadonlyMode(h.vaultReadonly);
+      })
+      .catch(() => {
+        /* health is best-effort; UI works without it */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     const ws = new DashboardWS(dashboardWsUrl());
     const offState = ws.onState(setConnection);
@@ -279,6 +304,7 @@ export function App() {
       <header style={styles.header}>
         <h1 style={styles.h1}>PA Dashboard</h1>
         <ConnectionBadge state={connection} />
+        {readonlyMode !== "off" && <ReadonlyBadge mode={readonlyMode} />}
         {pendingRows.length > 0 && !modalOpen && (
           <button
             type="button"
@@ -364,6 +390,22 @@ export function App() {
 function ConnectionBadge({ state }: { state: ConnectionState }) {
   const color = state === "open" ? "#1f8a3d" : state === "connecting" ? "#b07e00" : "#9a1f1f";
   return <span style={{ ...styles.badge, background: color }}>ws: {state}</span>;
+}
+
+function ReadonlyBadge({ mode }: { mode: ReadonlyMode }) {
+  const label =
+    mode === "strict"
+      ? "READ-ONLY (vault frozen)"
+      : "READ-ONLY (agent may propose)";
+  const title =
+    mode === "strict"
+      ? "All mutations are blocked server-side. Drag and approve will silently no-op."
+      : "Agent can write proposals (agent_suggests / agent_dismissed_at) but approve and drag are blocked.";
+  return (
+    <span style={{ ...styles.badge, background: "#9a1f1f" }} title={title}>
+      {label}
+    </span>
+  );
 }
 
 function GroomStatus({ state }: { state: GroomState }) {

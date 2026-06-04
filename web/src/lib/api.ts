@@ -2,6 +2,7 @@ import type {
   ApiTaskFile,
   ApproveAllResponse,
   GroomResponse,
+  HealthResponse,
   ListTasksResponse,
 } from "./types.ts";
 
@@ -58,6 +59,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health: () => request<HealthResponse>("/health"),
+
   listTasks: () => request<ListTasksResponse>("/api/tasks"),
 
   patchTask: (id: string, patch: Record<string, unknown>) =>

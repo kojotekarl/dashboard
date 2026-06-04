@@ -15,6 +15,7 @@ import { handleListTasks, handlePatchTask, matchTaskId } from "./api/tasks.ts";
 import { type Config, loadConfig } from "./config.ts";
 import { log } from "./log.ts";
 import { buildAuthContext, checkHttpAuth, checkWsAuth } from "./middleware/auth.ts";
+import { checkReadonly } from "./middleware/readonly.ts";
 import { MarkdownRepository } from "./repo/MarkdownRepository.ts";
 import { VaultWatcher } from "./watcher.ts";
 import { WebSocketBroadcaster, fileEventToMessage } from "./ws.ts";
@@ -68,6 +69,13 @@ const server = Bun.serve({
     const authReject = checkHttpAuth(authCtx, req);
     if (authReject !== null) return authReject;
 
+    // Read-only enforcement: when VAULT_READONLY != off, certain mutating
+    // endpoints return 403 regardless of auth/sandbox. The user-facing
+    // safety belt for "I want to point this at my real vault before I
+    // fully trust the parser." See server/middleware/readonly.ts.
+    const roReject = checkReadonly(config.vaultReadonly, req);
+    if (roReject !== null) return roReject;
+
     if (url.pathname === "/health" && req.method === "GET") {
       return Response.json({
         ok: true,
@@ -76,6 +84,7 @@ const server = Bun.serve({
         vault: vaultName,
         wsClients: broadcaster.size,
         authRequired: authCtx.requiredToken !== undefined,
+        vaultReadonly: config.vaultReadonly,
       });
     }
 
