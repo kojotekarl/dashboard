@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative } from "node:path";
 import matter from "gray-matter";
+import { PathSandboxError, assertUnderVault, canonicalizeVaultRoot } from "../safety/path-guard.ts";
 import { type Entity, type ParseWarning, parseEntity } from "./schema.ts";
 import type { RepoListing, TaskFile, TaskRepository } from "./TaskRepository.ts";
 
@@ -29,10 +30,15 @@ export type MarkdownRepositoryOptions = {
 };
 
 export class MarkdownRepository implements TaskRepository {
+  /** Canonicalized vault root — resolved once and used for every guard check. */
+  private readonly canonicalRoot: string;
+
   constructor(
     private readonly vaultPath: string,
     private readonly options: MarkdownRepositoryOptions = {},
-  ) {}
+  ) {
+    this.canonicalRoot = canonicalizeVaultRoot(vaultPath);
+  }
 
   async list(): Promise<RepoListing> {
     const files: TaskFile[] = [];
@@ -119,6 +125,18 @@ export class MarkdownRepository implements TaskRepository {
     path: string,
     relPath: string,
   ): Promise<{ file: TaskFile | undefined; warnings: ParseWarning[] }> {
+    // Sandbox check: never read a path that resolves outside the vault, and
+    // never follow a symlink. Defends list() against vault-internal symlinks
+    // pointing at /etc, and peek() against `..`-laden relPaths.
+    try {
+      assertUnderVault(this.canonicalRoot, path);
+    } catch (err: unknown) {
+      if (err instanceof PathSandboxError) {
+        return { file: undefined, warnings: [{ file: relPath, message: `path-guard: ${err.message}` }] };
+      }
+      throw err;
+    }
+
     let raw: string;
     try {
       raw = await readFile(path, "utf8");
@@ -159,8 +177,14 @@ export class MarkdownRepository implements TaskRepository {
   }
 
   private async atomicWrite(path: string, contents: string): Promise<void> {
-    this.options.beforeWrite?.(path);
+    // Sandbox both the final target and the in-flight tmp file. The target may
+    // not exist yet on first write; the tmp file definitely doesn't. Both
+    // must resolve UNDER the vault root, and neither may be a symlink.
+    assertUnderVault(this.canonicalRoot, path, { mayNotExist: true });
     const tmp = `${path}.tmp.${randomUUID()}`;
+    assertUnderVault(this.canonicalRoot, tmp, { mayNotExist: true });
+
+    this.options.beforeWrite?.(path);
     await writeFile(tmp, contents, "utf8");
     await rename(tmp, path);
   }
