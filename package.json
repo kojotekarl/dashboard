@@ -15,7 +15,8 @@
     "web:build": "cd web && bun run build",
     "web:install": "cd web && bun install",
     "typecheck": "tsc --noEmit && cd web && bun run typecheck",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "bun run scripts/privacy-lint.ts ./sample-vault"
   },
   "dependencies": {
     "chokidar": "^5.0.0",
