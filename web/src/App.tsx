@@ -1,8 +1,9 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BatchReviewModal, type SuggestionRow } from "./components/BatchReviewModal.tsx";
 import { Kanban, type MovePatch } from "./components/Kanban.tsx";
 import { api, ApiError } from "./lib/api.ts";
 import { OptimisticTracker } from "./lib/optimistic.ts";
-import type { ApiTaskFile, ParseWarning, ServerMessage } from "./lib/types.ts";
+import type { AgentProviderName, ApiTaskFile, ParseWarning, ServerMessage } from "./lib/types.ts";
 import { type ConnectionState, DashboardWS } from "./lib/ws.ts";
 import { dashboardWsUrl } from "./lib/wsUrl.ts";
 
@@ -14,7 +15,7 @@ type LoadState =
 type GroomState =
   | { kind: "idle" }
   | { kind: "running" }
-  | { kind: "ok"; summary: string; provider: "mock" | "hermes"; count: number }
+  | { kind: "ok"; summary: string; provider: AgentProviderName; count: number }
   | { kind: "error"; message: string };
 
 export function App() {
@@ -23,6 +24,12 @@ export function App() {
   const [lastEvent, setLastEvent] = useState<ServerMessage | null>(null);
   const [groom, setGroom] = useState<GroomState>({ kind: "idle" });
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalBusy, setModalBusy] = useState(false);
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  // Provider of the most recent groom, kept across the modal lifetime so the
+  // badge stays accurate even after the user closes and re-opens it.
+  const [lastProvider, setLastProvider] = useState<AgentProviderName | null>(null);
 
   // Latest files snapshot — used for revert on drag-PATCH failure.
   const filesRef = useRef<ApiTaskFile[] | null>(null);
@@ -38,8 +45,37 @@ export function App() {
     setState({ kind: "ready", files: res.files, warnings: res.warnings });
   }, [tracker]);
 
+  // ─── pending suggestions derived from current state ─────────────
+  const pendingRows = useMemo<SuggestionRow[]>(() => {
+    if (state.kind !== "ready") return [];
+    const out: SuggestionRow[] = [];
+    for (const f of state.files) {
+      const e = f.entity;
+      const sugg = "pepper_suggests" in e ? e.pepper_suggests : undefined;
+      if (sugg === undefined) continue;
+      out.push({
+        taskId: f.id,
+        taskTitle: e.title,
+        patch: sugg.patch,
+        reason: sugg.reason,
+        baseVersion: sugg.base_version,
+        provider: sugg.provider,
+        contentHash: f.contentHash,
+      });
+    }
+    return out;
+  }, [state]);
+
+  // Auto-close modal when nothing remains to review.
+  useEffect(() => {
+    if (modalOpen && pendingRows.length === 0) setModalOpen(false);
+  }, [modalOpen, pendingRows.length]);
+
+  // ─── handlers ──────────────────────────────────────────────────
+
   const onGroom = useCallback(async () => {
     setGroom({ kind: "running" });
+    setRowErrors({});
     try {
       const res = await api.groom();
       for (const s of res.suggestions) tracker.record(s.file.contentHash);
@@ -50,18 +86,135 @@ export function App() {
         provider: res.provider,
         count: res.suggestions.length,
       });
+      setLastProvider(res.provider);
+      if (res.suggestions.length > 0) setModalOpen(true);
     } catch (err: unknown) {
       const msg = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);
       setGroom({ kind: "error", message: msg });
     }
   }, [refetch, tracker]);
 
+  const replaceFile = useCallback((updated: ApiTaskFile) => {
+    setState((prev) =>
+      prev.kind === "ready"
+        ? { ...prev, files: prev.files.map((f) => (f.id === updated.id ? updated : f)) }
+        : prev,
+    );
+  }, []);
+
+  const clearRowError = useCallback((taskId: string) => {
+    setRowErrors((prev) => {
+      if (!(taskId in prev)) return prev;
+      const { [taskId]: _drop, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  const onApprove = useCallback(
+    async (taskId: string) => {
+      clearRowError(taskId);
+      setModalBusy(true);
+      try {
+        const updated = await api.approveSuggestion(taskId);
+        tracker.record(updated.contentHash);
+        replaceFile(updated);
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 409) {
+          // Suggestion is stale — server already explained which hash mismatched.
+          // Refetch so the modal can show the updated row as stale.
+          await refetch();
+          setRowErrors((prev) => ({ ...prev, [taskId]: "Stale — the file changed since this was proposed." }));
+        } else {
+          const msg = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);
+          setRowErrors((prev) => ({ ...prev, [taskId]: msg }));
+        }
+      } finally {
+        setModalBusy(false);
+      }
+    },
+    [clearRowError, refetch, replaceFile, tracker],
+  );
+
+  const onDismiss = useCallback(
+    async (taskId: string) => {
+      clearRowError(taskId);
+      setModalBusy(true);
+      try {
+        const updated = await api.dismissSuggestion(taskId);
+        tracker.record(updated.contentHash);
+        replaceFile(updated);
+      } catch (err: unknown) {
+        const msg = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);
+        setRowErrors((prev) => ({ ...prev, [taskId]: msg }));
+      } finally {
+        setModalBusy(false);
+      }
+    },
+    [clearRowError, replaceFile, tracker],
+  );
+
+  const onApproveAll = useCallback(async () => {
+    setRowErrors({});
+    setModalBusy(true);
+    try {
+      const res = await api.approveAll();
+      if (res.ok) {
+        for (const f of res.applied) tracker.record(f.contentHash);
+        setState((prev) => {
+          if (prev.kind !== "ready") return prev;
+          const byId = new Map(res.applied.map((f) => [f.id, f] as const));
+          return { ...prev, files: prev.files.map((f) => byId.get(f.id) ?? f) };
+        });
+      } else if ("stale" in res) {
+        // Pre-validation rejected — no writes happened. Refetch + mark stale rows.
+        await refetch();
+        const errs: Record<string, string> = {};
+        for (const s of res.stale) errs[s.taskId] = "Stale — dismiss this row or refresh.";
+        setRowErrors(errs);
+      } else {
+        // Mid-loop partial-failure path (server returned applied + remaining).
+        for (const f of res.applied) tracker.record(f.contentHash);
+        await refetch();
+        setRowErrors({ "__batch__": res.error });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);
+      setRowErrors({ "__batch__": msg });
+    } finally {
+      setModalBusy(false);
+    }
+  }, [refetch, tracker]);
+
+  const onDismissAll = useCallback(async () => {
+    // The server has no batch-dismiss endpoint. Dismiss is always safe
+    // (no staleness gate, no patch applied), so doing it in parallel is fine.
+    setRowErrors({});
+    setModalBusy(true);
+    const ids = pendingRows.map((r) => r.taskId);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => api.dismissSuggestion(id)));
+      const next: Record<string, string> = {};
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i]!;
+        if (r.status === "fulfilled") {
+          tracker.record(r.value.contentHash);
+        } else {
+          const id = ids[i]!;
+          const e = r.reason as unknown;
+          next[id] = e instanceof ApiError ? `${e.status} ${e.message}` : String(e);
+        }
+      }
+      await refetch();
+      setRowErrors(next);
+    } finally {
+      setModalBusy(false);
+    }
+  }, [pendingRows, refetch, tracker]);
+
   const onMove = useCallback(
     async (taskId: string, patch: MovePatch) => {
       const snapshot = filesRef.current;
       if (snapshot === null) return;
-
-      // Optimistic: apply locally so the card stays in its new column / position.
       setState((prev) =>
         prev.kind === "ready"
           ? { ...prev, files: prev.files.map((f) => mergeOptimistic(f, taskId, patch)) }
@@ -72,20 +225,17 @@ export function App() {
       try {
         const updated = await api.patchTask(taskId, patch);
         tracker.record(updated.contentHash);
-        setState((prev) =>
-          prev.kind === "ready"
-            ? { ...prev, files: prev.files.map((f) => (f.id === taskId ? updated : f)) }
-            : prev,
-        );
+        replaceFile(updated);
       } catch (err: unknown) {
-        // Revert to the pre-drag state and surface the error.
         setState((prev) => (prev.kind === "ready" ? { ...prev, files: snapshot } : prev));
         const msg = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);
         setMoveError(msg);
       }
     },
-    [tracker],
+    [replaceFile, tracker],
   );
+
+  // ─── effects ───────────────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false;
@@ -117,20 +267,36 @@ export function App() {
     };
   }, [tracker, refetch]);
 
+  // ─── render ────────────────────────────────────────────────────
+
   const tasks = state.kind === "ready" ? state.files.filter(isTaskLike) : [];
   const goalCount = state.kind === "ready" ? state.files.filter((f) => f.entity.type === "goal").length : 0;
   const projectCount = state.kind === "ready" ? state.files.filter((f) => f.entity.type === "project").length : 0;
+  const batchError = rowErrors["__batch__"];
 
   return (
     <main style={styles.main}>
       <header style={styles.header}>
         <h1 style={styles.h1}>Pepper Dashboard</h1>
         <ConnectionBadge state={connection} />
+        {pendingRows.length > 0 && !modalOpen && (
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            style={styles.reviewBtn}
+          >
+            Review {pendingRows.length} suggestion{pendingRows.length === 1 ? "" : "s"}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void onGroom()}
           disabled={groom.kind === "running"}
-          style={{ ...styles.groomBtn, ...(groom.kind === "running" ? styles.groomBtnRunning : {}) }}
+          style={{
+            ...styles.groomBtn,
+            ...(groom.kind === "running" ? styles.groomBtnRunning : {}),
+            ...(pendingRows.length > 0 && !modalOpen ? {} : styles.groomBtnFirst),
+          }}
         >
           {groom.kind === "running" ? "Grooming…" : "Groom my day"}
         </button>
@@ -175,6 +341,22 @@ export function App() {
           </code>
         </footer>
       )}
+
+      <BatchReviewModal
+        open={modalOpen}
+        rows={pendingRows}
+        provider={lastProvider ?? (pendingRows[0]?.provider ?? null)}
+        busy={modalBusy}
+        errors={rowErrors}
+        onApprove={(id) => void onApprove(id)}
+        onDismiss={(id) => void onDismiss(id)}
+        onApproveAll={() => void onApproveAll()}
+        onDismissAll={() => void onDismissAll()}
+        onClose={() => setModalOpen(false)}
+      />
+      {batchError !== undefined && !modalOpen && (
+        <p style={{ ...styles.groomMsg, ...styles.groomErr }}>Batch error: {batchError}</p>
+      )}
     </main>
   );
 }
@@ -195,7 +377,7 @@ function GroomStatus({ state }: { state: GroomState }) {
     <p style={{ ...styles.groomMsg, ...styles.groomOk }}>
       <strong>{tag}</strong> · {state.summary}{" "}
       {state.count > 0 && (
-        <span style={styles.groomHint}>(cards with proposals are outlined in gold)</span>
+        <span style={styles.groomHint}>(review opened — approve or dismiss each)</span>
       )}
     </p>
   );
@@ -229,8 +411,18 @@ const styles: Record<string, CSSProperties> = {
     fontSize: "0.8rem",
     fontFamily: "ui-monospace, SFMono-Regular, monospace",
   },
-  groomBtn: {
+  reviewBtn: {
     marginLeft: "auto",
+    background: "transparent",
+    color: "#b07e00",
+    border: "1px solid #b07e00",
+    padding: "0.45rem 0.9rem",
+    borderRadius: 6,
+    fontSize: "0.9rem",
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  groomBtn: {
     background: "#b07e00",
     color: "white",
     border: "none",
@@ -240,6 +432,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     cursor: "pointer",
   },
+  groomBtnFirst: { marginLeft: "auto" },
   groomBtnRunning: { opacity: 0.6, cursor: "wait" },
   groomMsg: {
     margin: "0.5rem 0 1rem",
