@@ -6,6 +6,7 @@
 # Personal / agent tooling (machine-specific paths, not part of the app)
 .claude/
 CLAUDE.md
+AGENTS.md
 
 # Private vaults — only sample-vault/ is committed.
 # Point VAULT_PATH in .env at these for real/dev data.

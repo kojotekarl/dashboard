@@ -1,0 +1,22 @@
+{
+  "name": "pepper-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A visual task board where an agent grooms and you decide.",
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "scripts": {
+    "server:dev": "bun run --watch server/index.ts",
+    "server:start": "bun run server/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.5.4"
+  }
+}
