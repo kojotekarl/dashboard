@@ -1,10 +1,12 @@
 import {
   DndContext,
+  DragOverlay,
   type DragEndEvent,
   type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  defaultDropAnimationSideEffects,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -12,6 +14,7 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useState } from "react";
 import { compareRanks, generateBetween, safeOrder } from "../lib/rank.ts";
 import type { ApiTaskFile, TaskStatus } from "../lib/types.ts";
+import { CardBody } from "./Card.tsx";
 import { Column, COLUMN_ORDER, statusFromColId } from "./Column.tsx";
 
 export type MovePatch = { status?: TaskStatus; order: string };
@@ -114,6 +117,8 @@ export function Kanban({ tasks, onMove }: KanbanProps) {
     onMove(String(active.id), patch);
   };
 
+  const draggingFile = draggingId === null ? null : tasks.find((f) => f.id === draggingId) ?? null;
+
   return (
     <DndContext
       sensors={sensors}
@@ -127,6 +132,13 @@ export function Kanban({ tasks, onMove }: KanbanProps) {
           <Column key={status} status={status} files={byStatus.get(status) ?? []} />
         ))}
       </div>
+      {/* Free-floating clone that follows the cursor across column boundaries.
+          Without this, useSortable clamps the visible transform inside the
+          source column and the card appears to disappear during cross-column
+          drag (the data layer still tracks it; only the visual was missing). */}
+      <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.35" } } }) }}>
+        {draggingFile !== null ? <CardBody file={draggingFile} variant="overlay" /> : null}
+      </DragOverlay>
       {draggingId !== null && <span style={styles.srOnly}>Dragging {draggingId}</span>}
     </DndContext>
   );
