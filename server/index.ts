@@ -1,5 +1,14 @@
 import { basename } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
+import { MockAgent } from "./agent/MockAgent.ts";
+import type { AgentProvider } from "./agent/AgentProvider.ts";
+import { handleGroom } from "./api/agent.ts";
+import {
+  handleApprove,
+  handleApproveAll,
+  handleDismiss,
+  matchSuggestionAction,
+} from "./api/suggestions.ts";
 import { handleListTasks, handlePatchTask, matchTaskId } from "./api/tasks.ts";
 import { loadConfig } from "./config.ts";
 import { log } from "./log.ts";
@@ -19,6 +28,15 @@ const watcher = new VaultWatcher(config.vaultPath);
 const repo = new MarkdownRepository(config.vaultPath, {
   beforeWrite: (path) => watcher.suppressNext(path),
 });
+
+// Agent provider — MockAgent for v1. T6 introduces HermesAgent and a
+// config-driven selector with MockAgent fallback when no Hermes binary.
+const agent: AgentProvider = (() => {
+  if (config.agentProvider === "hermes") {
+    log.warn("AGENT_PROVIDER=hermes requested but HermesAgent ships in T6; using MockAgent for now");
+  }
+  return new MockAgent();
+})();
 
 watcher.on(async (event) => {
   // Attach the post-change contentHash so clients can dedupe echoes against
@@ -73,6 +91,21 @@ const server = Bun.serve({
         .then((body) => handlePatchTask(repo, taskId, body));
     }
 
+    if (url.pathname === "/api/agent/groom" && req.method === "POST") {
+      return handleGroom(repo, agent);
+    }
+
+    if (url.pathname === "/api/suggestions/approve-all" && req.method === "POST") {
+      return handleApproveAll(repo);
+    }
+
+    const sugg = matchSuggestionAction(url.pathname);
+    if (sugg !== undefined && req.method === "POST") {
+      return sugg.action === "approve"
+        ? handleApprove(repo, sugg.taskId)
+        : handleDismiss(repo, sugg.taskId);
+    }
+
     return new Response("Not Found", { status: 404 });
   },
   websocket: {
@@ -104,7 +137,7 @@ if (config.isLanExposed) {
 }
 
 // Expose the wired graph for tests / future server-side callers.
-export { broadcaster, repo, server, watcher };
+export { agent, broadcaster, repo, server, watcher };
 
 // Graceful shutdown.
 const shutdown = async (signal: string): Promise<void> => {

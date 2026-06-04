@@ -1,33 +1,13 @@
-import type { TaskFile } from "../repo/TaskRepository.ts";
 import type { MarkdownRepository } from "../repo/MarkdownRepository.ts";
+import { type ApiTaskFile, serializeFile } from "./wire.ts";
 
-/**
- * Wire-shape projection of a TaskFile. Hides on-disk absolute paths from
- * clients (only `relPath` goes out) and keeps the response minimal.
- */
-export type ApiTaskFile = {
-  id: string;
-  relPath: string;
-  entity: TaskFile["entity"];
-  body: string;
-  contentHash: string;
-};
-
-function serialize(file: TaskFile): ApiTaskFile {
-  return {
-    id: file.id,
-    relPath: file.relPath,
-    entity: file.entity,
-    body: file.body,
-    contentHash: file.contentHash,
-  };
-}
+export type { ApiTaskFile };
 
 /** GET /api/tasks → `{ files, warnings }`. Body and contentHash included. */
 export async function handleListTasks(repo: MarkdownRepository): Promise<Response> {
   const { files, warnings } = await repo.list();
   return Response.json({
-    files: files.map(serialize),
+    files: files.map(serializeFile),
     warnings,
   });
 }
@@ -66,7 +46,7 @@ export async function handlePatchTask(
 
   try {
     const updated = await repo.update(id, patch);
-    return Response.json(serialize(updated));
+    return Response.json(serializeFile(updated));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/no file with id/.test(msg)) {
