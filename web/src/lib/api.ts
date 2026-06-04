@@ -11,6 +11,12 @@ import type {
  */
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
+/**
+ * Token paired with the server's DASHBOARD_TOKEN. Sent as X-Dashboard-Token
+ * on every mutating request when set. Empty in dev (server has auth off).
+ */
+const TOKEN = import.meta.env.VITE_DASHBOARD_TOKEN ?? "";
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -27,6 +33,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(TOKEN.length > 0 ? { "X-Dashboard-Token": TOKEN } : {}),
       ...(init?.headers ?? {}),
     },
   });

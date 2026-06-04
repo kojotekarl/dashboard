@@ -14,6 +14,7 @@ import {
 import { handleListTasks, handlePatchTask, matchTaskId } from "./api/tasks.ts";
 import { type Config, loadConfig } from "./config.ts";
 import { log } from "./log.ts";
+import { buildAuthContext, checkHttpAuth, checkWsAuth } from "./middleware/auth.ts";
 import { MarkdownRepository } from "./repo/MarkdownRepository.ts";
 import { VaultWatcher } from "./watcher.ts";
 import { WebSocketBroadcaster, fileEventToMessage } from "./ws.ts";
@@ -32,6 +33,8 @@ const repo = new MarkdownRepository(config.vaultPath, {
 });
 
 const agent: AgentProvider = await createAgent(config);
+
+const authCtx = buildAuthContext(config.dashboardToken, config.bindHost, config.port);
 
 watcher.on(async (event) => {
   // Attach the post-change contentHash so clients can dedupe echoes against
@@ -58,6 +61,13 @@ const server = Bun.serve({
   fetch(req, srv) {
     const url = new URL(req.url);
 
+    // Auth: applies only when DASHBOARD_TOKEN is configured. GET stays open
+    // so /health and /api/tasks render. POST/PATCH/DELETE require a same-
+    // origin request bearing the token. WebSocket upgrade gets a separate
+    // query-param check below.
+    const authReject = checkHttpAuth(authCtx, req);
+    if (authReject !== null) return authReject;
+
     if (url.pathname === "/health" && req.method === "GET") {
       return Response.json({
         ok: true,
@@ -65,10 +75,14 @@ const server = Bun.serve({
         agentProvider: config.agentProvider,
         vault: vaultName,
         wsClients: broadcaster.size,
+        authRequired: authCtx.requiredToken !== undefined,
       });
     }
 
     if (url.pathname === "/api/ws") {
+      if (!checkWsAuth(authCtx, req)) {
+        return new Response("unauthorized", { status: 401 });
+      }
       const upgraded = srv.upgrade(req);
       if (upgraded) return undefined;
       return new Response("WebSocket upgrade failed", { status: 400 });
