@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "chokidar": "^5.0.0",
     "gray-matter": "^4.0.3",
     "zod": "^3.23.8"
   },

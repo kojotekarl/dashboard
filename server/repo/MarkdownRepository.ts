@@ -19,8 +19,20 @@ const ENTITY_DIRS = ["tasks", "goals", "routines", "projects"] as const;
  * Writes are atomic (tmp + rename) and ignore-able by the file watcher via
  * the `*.tmp.*` glob. Unknown frontmatter keys are preserved on update.
  */
+export type MarkdownRepositoryOptions = {
+  /**
+   * Called immediately before each atomic write. The server wires this to
+   * VaultWatcher.suppressNext(path) so its own writes don't echo back through
+   * the file watcher and clobber the client's optimistic UI state.
+   */
+  beforeWrite?: (path: string) => void;
+};
+
 export class MarkdownRepository implements TaskRepository {
-  constructor(private readonly vaultPath: string) {}
+  constructor(
+    private readonly vaultPath: string,
+    private readonly options: MarkdownRepositoryOptions = {},
+  ) {}
 
   async list(): Promise<RepoListing> {
     const files: TaskFile[] = [];
@@ -136,6 +148,7 @@ export class MarkdownRepository implements TaskRepository {
   }
 
   private async atomicWrite(path: string, contents: string): Promise<void> {
+    this.options.beforeWrite?.(path);
     const tmp = `${path}.tmp.${randomUUID()}`;
     await writeFile(tmp, contents, "utf8");
     await rename(tmp, path);
